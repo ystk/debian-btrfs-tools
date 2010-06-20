@@ -1,0 +1,32 @@
+#!/usr/bin/make -f
+
+SHELL := sh -e
+
+%:
+	dh --with quilt ${@}
+
+override_dh_auto_clean:
+	dh_auto_clean
+
+	rm -f btrfs-image btrfstune version.h
+
+override_dh_auto_build:
+	CFLAGS="$(CFLAGS)" $(MAKE) all btrfsck btrfstune btrfs-image convert
+
+override_dh_auto_install:
+	$(MAKE) DESTDIR=$(CURDIR)/debian/btrfs-tools prefix=/ bindir=/sbin mandir=/usr/share/man install
+
+	# Fixing 'manpage-not-compressed-with-max-compression'
+	for MANPAGE in $(CURDIR)/debian/btrfs-tools/usr/share/man/*/*.gz; \
+	do \
+		cd $$(dirname $${MANPAGE}); \
+		gunzip $$(basename $${MANPAGE}); \
+	done
+
+	# Adding initramfs-tools integration
+	install -D -m 0755 debian/local/btrfs.hook debian/btrfs-tools/usr/share/initramfs-tools/hooks/btrfs
+	install -D -m 0755 debian/local/btrfs.local-premount debian/btrfs-tools/usr/share/initramfs-tools/scripts/local-premount/btrfs
+	install -D -m 0644 debian/local/btrfs.modules debian/btrfs-tools//usr/share/initramfs-tools/modules.d/btrfs
+
+override_dh_strip:
+	dh_strip --dbg-package=btrfs-tools-dbg
