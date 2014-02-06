@@ -16,6 +16,7 @@
  * Boston, MA 021110-1307, USA.
  */
 
+#define _GNU_SOURCE
 #ifndef __CHECKER__
 #include <sys/ioctl.h>
 #include <sys/mount.h>
@@ -33,7 +34,6 @@
 #include "ctree.h"
 #include "transaction.h"
 #include "utils.h"
-#include "version.h"
 
 /* we store all the roots we find in an rbtree so that we can
  * search for them later.
@@ -199,9 +199,9 @@ static int add_root(struct root_lookup *root_lookup,
  * This can't be called until all the root_info->path fields are filled
  * in by lookup_ino_path
  */
-static int resolve_root(struct root_lookup *rl, struct root_info *ri)
+static int resolve_root(struct root_lookup *rl, struct root_info *ri,
+			u64 *root_id, u64 *parent_id, u64 *top_id, char **path)
 {
-	u64 top_id;
 	char *full_path = NULL;
 	int len = 0;
 	struct root_info *found;
@@ -210,6 +210,7 @@ static int resolve_root(struct root_lookup *rl, struct root_info *ri)
 	 * we go backwards from the root_info object and add pathnames
 	 * from parent directories as we go.
 	 */
+	*parent_id = 0;
 	found = ri;
 	while (1) {
 		char *tmp;
@@ -232,9 +233,13 @@ static int resolve_root(struct root_lookup *rl, struct root_info *ri)
 		}
 
 		next = found->ref_tree;
+		/* record the first parent */
+		if (*parent_id == 0)
+			*parent_id = next;
+
 		/* if the ref_tree refers to ourselves, we're at the top */
 		if (next == found->root_id) {
-			top_id = next;
+			*top_id = next;
 			break;
 		}
 
@@ -244,13 +249,14 @@ static int resolve_root(struct root_lookup *rl, struct root_info *ri)
 		 */
 		found = tree_search(&rl->root, next);
 		if (!found) {
-			top_id = next;
+			*top_id = next;
 			break;
 		}
 	}
-	printf("ID %llu top level %llu path %s\n", ri->root_id, top_id,
-	       full_path);
-	free(full_path);
+
+	*root_id = ri->root_id;
+	*path = full_path;
+
 	return 0;
 }
 
@@ -264,7 +270,7 @@ static int resolve_root(struct root_lookup *rl, struct root_info *ri)
 static int lookup_ino_path(int fd, struct root_info *ri)
 {
 	struct btrfs_ioctl_ino_lookup_args args;
-	int ret;
+	int ret, e;
 
 	if (ri->path)
 		return 0;
@@ -274,9 +280,11 @@ static int lookup_ino_path(int fd, struct root_info *ri)
 	args.objectid = ri->dir_id;
 
 	ret = ioctl(fd, BTRFS_IOC_INO_LOOKUP, &args);
+	e = errno;
 	if (ret) {
-		fprintf(stderr, "ERROR: Failed to lookup path for root %llu\n",
-			(unsigned long long)ri->ref_tree);
+		fprintf(stderr, "ERROR: Failed to lookup path for root %llu - %s\n",
+			(unsigned long long)ri->ref_tree,
+			strerror(e));
 		return ret;
 	}
 
@@ -319,15 +327,18 @@ static u64 find_root_gen(int fd)
 	unsigned long off = 0;
 	u64 max_found = 0;
 	int i;
+	int e;
 
 	memset(&ino_args, 0, sizeof(ino_args));
 	ino_args.objectid = BTRFS_FIRST_FREE_OBJECTID;
 
 	/* this ioctl fills in ino_args->treeid */
 	ret = ioctl(fd, BTRFS_IOC_INO_LOOKUP, &ino_args);
+	e = errno;
 	if (ret) {
-		fprintf(stderr, "ERROR: Failed to lookup path for dirid %llu\n",
-			(unsigned long long)BTRFS_FIRST_FREE_OBJECTID);
+		fprintf(stderr, "ERROR: Failed to lookup path for dirid %llu - %s\n",
+			(unsigned long long)BTRFS_FIRST_FREE_OBJECTID,
+			strerror(e));
 		return 0;
 	}
 
@@ -350,8 +361,10 @@ static u64 find_root_gen(int fd)
 
 	while (1) {
 		ret = ioctl(fd, BTRFS_IOC_TREE_SEARCH, &args);
+		e = errno;
 		if (ret < 0) {
-			fprintf(stderr, "ERROR: can't perform the search\n");
+			fprintf(stderr, "ERROR: can't perform the search - %s\n",
+				strerror(e));
 			return 0;
 		}
 		/* the ioctl returns the number of item it found in nr_items */
@@ -406,14 +419,16 @@ static char *__ino_resolve(int fd, u64 dirid)
 	struct btrfs_ioctl_ino_lookup_args args;
 	int ret;
 	char *full;
+	int e;
 
 	memset(&args, 0, sizeof(args));
 	args.objectid = dirid;
 
 	ret = ioctl(fd, BTRFS_IOC_INO_LOOKUP, &args);
+	e = errno;
 	if (ret) {
-		fprintf(stderr, "ERROR: Failed to lookup path for dirid %llu\n",
-			(unsigned long long)dirid);
+		fprintf(stderr, "ERROR: Failed to lookup path for dirid %llu - %s\n",
+			(unsigned long long)dirid, strerror(e) );
 		return ERR_PTR(ret);
 	}
 
@@ -471,6 +486,7 @@ static char *ino_resolve(int fd, u64 ino, u64 *cache_dirid, char **cache_name)
 	struct btrfs_ioctl_search_header *sh;
 	unsigned long off = 0;
 	int namelen;
+	int e;
 
 	memset(&args, 0, sizeof(args));
 
@@ -489,8 +505,10 @@ static char *ino_resolve(int fd, u64 ino, u64 *cache_dirid, char **cache_name)
 	sk->nr_items = 1;
 
 	ret = ioctl(fd, BTRFS_IOC_TREE_SEARCH, &args);
+	e = errno;
 	if (ret < 0) {
-		fprintf(stderr, "ERROR: can't perform the search\n");
+		fprintf(stderr, "ERROR: can't perform the search - %s\n",
+			strerror(e));
 		return NULL;
 	}
 	/* the ioctl returns the number of item it found in nr_items */
@@ -535,10 +553,8 @@ build:
 	return full;
 }
 
-int list_subvols(int fd)
+static int __list_subvol_search(int fd, struct root_lookup *root_lookup)
 {
-	struct root_lookup root_lookup;
-	struct rb_node *n;
 	int ret;
 	struct btrfs_ioctl_search_args args;
 	struct btrfs_ioctl_search_key *sk = &args.key;
@@ -550,7 +566,10 @@ int list_subvols(int fd)
 	u64 dir_id;
 	int i;
 
-	root_lookup_init(&root_lookup);
+	root_lookup_init(root_lookup);
+	memset(&args, 0, sizeof(args));
+
+	root_lookup_init(root_lookup);
 
 	memset(&args, 0, sizeof(args));
 
@@ -577,10 +596,8 @@ int list_subvols(int fd)
 
 	while(1) {
 		ret = ioctl(fd, BTRFS_IOC_TREE_SEARCH, &args);
-		if (ret < 0) {
-			fprintf(stderr, "ERROR: can't perform the search\n");
+		if (ret < 0)
 			return ret;
-		}
 		/* the ioctl returns the number of item it found in nr_items */
 		if (sk->nr_items == 0)
 			break;
@@ -601,7 +618,7 @@ int list_subvols(int fd)
 				name = (char *)(ref + 1);
 				dir_id = btrfs_stack_root_ref_dirid(ref);
 
-				add_root(&root_lookup, sh->objectid, sh->offset,
+				add_root(root_lookup, sh->objectid, sh->offset,
 					 dir_id, name, name_len);
 			}
 
@@ -619,18 +636,25 @@ int list_subvols(int fd)
 		/* this iteration is done, step forward one root for the next
 		 * ioctl
 		 */
-		if (sk->min_objectid < (u64)-1) {
+		if (sk->min_type < BTRFS_ROOT_BACKREF_KEY) {
+			sk->min_type = BTRFS_ROOT_BACKREF_KEY;
+			sk->min_offset = 0;
+		} else  if (sk->min_objectid < (u64)-1) {
 			sk->min_objectid++;
 			sk->min_type = BTRFS_ROOT_BACKREF_KEY;
 			sk->min_offset = 0;
 		} else
 			break;
 	}
-	/*
-	 * now we have an rbtree full of root_info objects, but we need to fill
-	 * in their path names within the subvol that is referencing each one.
-	 */
-	n = rb_first(&root_lookup.root);
+
+	return 0;
+}
+
+static int __list_subvol_fill_paths(int fd, struct root_lookup *root_lookup)
+{
+	struct rb_node *n;
+
+	n = rb_first(&root_lookup->root);
 	while (n) {
 		struct root_info *entry;
 		int ret;
@@ -641,6 +665,30 @@ int list_subvols(int fd)
 		n = rb_next(n);
 	}
 
+	return 0;
+}
+
+int list_subvols(int fd, int print_parent)
+{
+	struct root_lookup root_lookup;
+	struct rb_node *n;
+	int ret;
+
+	ret = __list_subvol_search(fd, &root_lookup);
+	if (ret) {
+		fprintf(stderr, "ERROR: can't perform the search - %s\n",
+				strerror(errno));
+		return ret;
+	}
+
+	/*
+	 * now we have an rbtree full of root_info objects, but we need to fill
+	 * in their path names within the subvol that is referencing each one.
+	 */
+	ret = __list_subvol_fill_paths(fd, &root_lookup);
+	if (ret < 0)
+		return ret;
+
 	/* now that we have all the subvol-relative paths filled in,
 	 * we have to string the subvols together so that we can get
 	 * a path all the way back to the FS root
@@ -648,8 +696,24 @@ int list_subvols(int fd)
 	n = rb_last(&root_lookup.root);
 	while (n) {
 		struct root_info *entry;
+		u64 root_id;
+		u64 level;
+		u64 parent_id;
+		char *path;
 		entry = rb_entry(n, struct root_info, rb_node);
-		resolve_root(&root_lookup, entry);
+		resolve_root(&root_lookup, entry, &root_id, &parent_id,
+				&level, &path);
+		if (print_parent) {
+			printf("ID %llu parent %llu top level %llu path %s\n",
+				(unsigned long long)root_id,
+				(unsigned long long)parent_id,
+				(unsigned long long)level, path);
+		} else {
+			printf("ID %llu top level %llu path %s\n",
+				(unsigned long long)root_id,
+				(unsigned long long)level, path);
+		}
+		free(path);
 		n = rb_prev(n);
 	}
 
@@ -662,9 +726,9 @@ static int print_one_extent(int fd, struct btrfs_ioctl_search_header *sh,
 			    char **cache_dir_name, u64 *cache_ino,
 			    char **cache_full_name)
 {
-	u64 len;
-	u64 disk_start;
-	u64 disk_offset;
+	u64 len = 0;
+	u64 disk_start = 0;
+	u64 disk_offset = 0;
 	u8 type;
 	int compressed = 0;
 	int flags = 0;
@@ -697,6 +761,15 @@ static int print_one_extent(int fd, struct btrfs_ioctl_search_header *sh,
 		disk_start = 0;
 		disk_offset = 0;
 		len = btrfs_stack_file_extent_ram_bytes(item);
+	} else {
+		printf("unhandled extent type %d for inode %llu "
+		       "file offset %llu gen %llu\n",
+			type,
+			(unsigned long long)sh->objectid,
+			(unsigned long long)sh->offset,
+			(unsigned long long)found_gen);
+
+		return -EIO;
 	}
 	printf("inode %llu file offset %llu len %llu disk start %llu "
 	       "offset %llu gen %llu flags ",
@@ -737,6 +810,7 @@ int find_updated_files(int fd, u64 root_id, u64 oldest_gen)
 	u64 found_gen;
 	u64 max_found = 0;
 	int i;
+	int e;
 	u64 cache_dirid = 0;
 	u64 cache_ino = 0;
 	char *cache_dir_name = NULL;
@@ -763,8 +837,10 @@ int find_updated_files(int fd, u64 root_id, u64 oldest_gen)
 	max_found = find_root_gen(fd);
 	while(1) {
 		ret = ioctl(fd, BTRFS_IOC_TREE_SEARCH, &args);
+		e = errno;
 		if (ret < 0) {
-			fprintf(stderr, "ERROR: can't perform the search\n");
+			fprintf(stderr, "ERROR: can't perform the search- %s\n",
+				strerror(e));
 			return ret;
 		}
 		/* the ioctl returns the number of item it found in nr_items */
@@ -822,4 +898,39 @@ int find_updated_files(int fd, u64 root_id, u64 oldest_gen)
 	free(cache_full_name);
 	printf("transid marker was %llu\n", (unsigned long long)max_found);
 	return ret;
+}
+
+char *path_for_root(int fd, u64 root)
+{
+	struct root_lookup root_lookup;
+	struct rb_node *n;
+	char *ret_path = NULL;
+	int ret;
+
+	ret = __list_subvol_search(fd, &root_lookup);
+	if (ret < 0)
+		return ERR_PTR(ret);
+
+	ret = __list_subvol_fill_paths(fd, &root_lookup);
+	if (ret < 0)
+		return ERR_PTR(ret);
+
+	n = rb_last(&root_lookup.root);
+	while (n) {
+		struct root_info *entry;
+		u64 root_id;
+		u64 parent_id;
+		u64 level;
+		char *path;
+		entry = rb_entry(n, struct root_info, rb_node);
+		resolve_root(&root_lookup, entry, &root_id, &parent_id, &level,
+				&path);
+		if (root_id == root)
+			ret_path = path;
+		else
+			free(path);
+		n = rb_prev(n);
+	}
+
+	return ret_path;
 }

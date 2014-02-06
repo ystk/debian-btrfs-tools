@@ -1,2 +1,3 @@
-btrfs-image	/sbin
-btrfstune	/sbin
+btrfs-select-super	/sbin
+calc-size		/sbin
+ioctl.h			/usr/include/btrfs

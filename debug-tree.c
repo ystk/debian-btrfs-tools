@@ -35,44 +35,6 @@ static int print_usage(void)
 	exit(1);
 }
 
-static void print_extent_leaf(struct btrfs_root *root, struct extent_buffer *l)
-{
-	int i;
-	struct btrfs_item *item;
-//	struct btrfs_extent_ref *ref;
-	struct btrfs_key key;
-	static u64 last = 0;
-	static u64 last_len = 0;
-	u32 nr = btrfs_header_nritems(l);
-	u32 type;
-
-	for (i = 0 ; i < nr ; i++) {
-		item = btrfs_item_nr(l, i);
-		btrfs_item_key_to_cpu(l, &key, i);
-		type = btrfs_key_type(&key);
-		switch (type) {
-		case BTRFS_EXTENT_ITEM_KEY:
-			last_len = key.offset;
-			last = key.objectid;
-			break;
-#if 0
-		case BTRFS_EXTENT_REF_KEY:
-			ref = btrfs_item_ptr(l, i, struct btrfs_extent_ref);
-			printf("%llu %llu extent back ref root %llu gen %llu "
-			       "owner %llu num_refs %lu\n",
-			       (unsigned long long)last,
-			       (unsigned long long)last_len,
-			       (unsigned long long)btrfs_ref_root(l, ref),
-			       (unsigned long long)btrfs_ref_generation(l, ref),
-			       (unsigned long long)btrfs_ref_objectid(l, ref),
-			       (unsigned long)btrfs_ref_num_refs(l, ref));
-			break;
-#endif
-		};
-		fflush(stdout);
-	}
-}
-
 static void print_extents(struct btrfs_root *root, struct extent_buffer *eb)
 {
 	int i;
@@ -81,10 +43,7 @@ static void print_extents(struct btrfs_root *root, struct extent_buffer *eb)
 
 	if (!eb)
 		return;
-	if (btrfs_is_leaf(eb)) {
-		print_extent_leaf(root, eb);
-		return;
-	}
+
 	size = btrfs_level_size(root, btrfs_header_level(eb) - 1);
 	nr = btrfs_header_nritems(eb);
 	for (i = 0; i < nr; i++) {
@@ -103,9 +62,49 @@ static void print_extents(struct btrfs_root *root, struct extent_buffer *eb)
 	}
 }
 
+static void print_old_roots(struct btrfs_super_block *super)
+{
+	struct btrfs_root_backup *backup;
+	int i;
+
+	for (i = 0; i < BTRFS_NUM_BACKUP_ROOTS; i++) {
+		backup = super->super_roots + i;
+		printf("btrfs root backup slot %d\n", i);
+		printf("\ttree root gen %llu block %llu\n",
+		       (unsigned long long)btrfs_backup_tree_root_gen(backup),
+		       (unsigned long long)btrfs_backup_tree_root(backup));
+
+		printf("\t\textent root gen %llu block %llu\n",
+		       (unsigned long long)btrfs_backup_extent_root_gen(backup),
+		       (unsigned long long)btrfs_backup_extent_root(backup));
+
+		printf("\t\tchunk root gen %llu block %llu\n",
+		       (unsigned long long)btrfs_backup_chunk_root_gen(backup),
+		       (unsigned long long)btrfs_backup_chunk_root(backup));
+
+		printf("\t\tdevice root gen %llu block %llu\n",
+		       (unsigned long long)btrfs_backup_dev_root_gen(backup),
+		       (unsigned long long)btrfs_backup_dev_root(backup));
+
+		printf("\t\tcsum root gen %llu block %llu\n",
+		       (unsigned long long)btrfs_backup_csum_root_gen(backup),
+		       (unsigned long long)btrfs_backup_csum_root(backup));
+
+		printf("\t\tfs root gen %llu block %llu\n",
+		       (unsigned long long)btrfs_backup_fs_root_gen(backup),
+		       (unsigned long long)btrfs_backup_fs_root(backup));
+
+		printf("\t\t%llu used %llu total %llu devices\n",
+		       (unsigned long long)btrfs_backup_bytes_used(backup),
+		       (unsigned long long)btrfs_backup_total_bytes(backup),
+		       (unsigned long long)btrfs_backup_num_devices(backup));
+	}
+}
+
 int main(int ac, char **av)
 {
 	struct btrfs_root *root;
+	struct btrfs_fs_info *info;
 	struct btrfs_path path;
 	struct btrfs_key key;
 	struct btrfs_root_item ri;
@@ -116,6 +115,9 @@ int main(int ac, char **av)
 	int ret;
 	int slot;
 	int extent_only = 0;
+	int device_only = 0;
+	int roots_only = 0;
+	int root_backups = 0;
 	u64 block_only = 0;
 	struct btrfs_root *tree_root_scan;
 
@@ -123,12 +125,22 @@ int main(int ac, char **av)
 
 	while(1) {
 		int c;
-		c = getopt(ac, av, "eb:");
+		c = getopt(ac, av, "deb:rR");
 		if (c < 0)
 			break;
 		switch(c) {
 			case 'e':
 				extent_only = 1;
+				break;
+			case 'd':
+				device_only = 1;
+				break;
+			case 'r':
+				roots_only = 1;
+				break;
+			case 'R':
+				roots_only = 1;
+				root_backups = 1;
 				break;
 			case 'b':
 				block_only = atoll(optarg);
@@ -141,12 +153,18 @@ int main(int ac, char **av)
 	if (ac != 1)
 		print_usage();
 
-	root = open_ctree(av[optind], 0, 0);
-	if (!root) {
+	info = open_ctree_fs_info(av[optind], 0, 0, 1);
+	if (!info) {
 		fprintf(stderr, "unable to open %s\n", av[optind]);
 		exit(1);
 	}
+	root = info->fs_root;
+
 	if (block_only) {
+		if (!root) {
+			fprintf(stderr, "unable to open %s\n", av[optind]);
+			exit(1);
+		}
 		leaf = read_tree_block(root,
 				      block_only,
 				      root->leafsize, 0);
@@ -162,7 +180,8 @@ int main(int ac, char **av)
 					      root->nodesize, 0);
 		}
 		if (!leaf) {
-			fprintf(stderr, "failed to read %llu\n", block_only);
+			fprintf(stderr, "failed to read %llu\n",
+				(unsigned long long)block_only);
 			return 0;
 		}
 		btrfs_print_tree(root, leaf, 0);
@@ -170,18 +189,34 @@ int main(int ac, char **av)
 	}
 
 	if (!extent_only) {
-		printf("root tree\n");
-		btrfs_print_tree(root->fs_info->tree_root,
-				 root->fs_info->tree_root->node, 1);
+		if (roots_only) {
+			printf("root tree: %llu level %d\n",
+			     (unsigned long long)info->tree_root->node->start,
+			     btrfs_header_level(info->tree_root->node));
+			printf("chunk tree: %llu level %d\n",
+			     (unsigned long long)info->chunk_root->node->start,
+			     btrfs_header_level(info->chunk_root->node));
+		} else {
+			if (info->tree_root->node) {
+				printf("root tree\n");
+				btrfs_print_tree(info->tree_root,
+						 info->tree_root->node, 1);
+			}
 
-		printf("chunk tree\n");
-		btrfs_print_tree(root->fs_info->chunk_root,
-				 root->fs_info->chunk_root->node, 1);
+			if (info->chunk_root->node) {
+				printf("chunk tree\n");
+				btrfs_print_tree(info->chunk_root,
+						 info->chunk_root->node, 1);
+			}
+		}
 	}
-	tree_root_scan = root->fs_info->tree_root;
+	tree_root_scan = info->tree_root;
 
 	btrfs_init_path(&path);
 again:
+	if (!extent_buffer_uptodate(tree_root_scan->node))
+		goto no_node;
+
 	key.offset = 0;
 	key.objectid = 0;
 	btrfs_set_key_type(&key, BTRFS_ROOT_ITEM_KEY);
@@ -202,21 +237,27 @@ again:
 		if (btrfs_key_type(&found_key) == BTRFS_ROOT_ITEM_KEY) {
 			unsigned long offset;
 			struct extent_buffer *buf;
-			int skip = extent_only;
+			int skip = extent_only | device_only;
 
 			offset = btrfs_item_ptr_offset(leaf, slot);
 			read_extent_buffer(leaf, &ri, offset, sizeof(ri));
 			buf = read_tree_block(tree_root_scan,
 					      btrfs_root_bytenr(&ri),
-					      tree_root_scan->leafsize, 0);
+					      btrfs_level_size(tree_root_scan,
+							btrfs_root_level(&ri)),
+					      0);
+			if (!extent_buffer_uptodate(buf))
+				goto next;
+
 			switch(found_key.objectid) {
 			case BTRFS_ROOT_TREE_OBJECTID:
 				if (!skip)
 					printf("root");
 				break;
 			case BTRFS_EXTENT_TREE_OBJECTID:
-				skip = 0;
-				if (!extent_only)
+				if (!device_only)
+					skip = 0;
+				if (!extent_only && !device_only)
 					printf("extent");
 				break;
 			case BTRFS_CHUNK_TREE_OBJECTID:
@@ -225,9 +266,8 @@ again:
 				}
 				break;
 			case BTRFS_DEV_TREE_OBJECTID:
-				if (!skip) {
-					printf("device");
-				}
+				skip = 0;
+				printf("device");
 				break;
 			case BTRFS_FS_TREE_OBJECTID:
 				if (!skip) {
@@ -235,9 +275,8 @@ again:
 				}
 				break;
 			case BTRFS_ROOT_TREE_DIR_OBJECTID:
-				if (!skip) {
-					printf("directory");
-				}
+				skip = 0;
+				printf("directory");
 				break;
 			case BTRFS_CSUM_TREE_OBJECTID:
 				if (!skip) {
@@ -283,34 +322,45 @@ again:
 					printf("file");
 				}
 			}
-			if (!skip && !extent_only) {
+			if (extent_only && !skip) {
+				print_extents(tree_root_scan, buf);
+			} else if (!skip) {
 				printf(" tree ");
 				btrfs_print_key(&disk_key);
-				printf(" \n");
-				btrfs_print_tree(tree_root_scan, buf, 1);
-			} else if (extent_only && !skip) {
-				print_extents(tree_root_scan, buf);
+				if (roots_only) {
+					printf(" %llu level %d\n",
+					       (unsigned long long)buf->start,
+					       btrfs_header_level(buf));
+				} else {
+					printf(" \n");
+					btrfs_print_tree(tree_root_scan, buf, 1);
+				}
 			}
 		}
+next:
 		path.slots[0]++;
 	}
+no_node:
 	btrfs_release_path(root, &path);
 
-	if (tree_root_scan == root->fs_info->tree_root &&
-	    root->fs_info->log_root_tree) {
-		tree_root_scan = root->fs_info->log_root_tree;
+	if (tree_root_scan == info->tree_root &&
+	    info->log_root_tree) {
+		tree_root_scan = info->log_root_tree;
 		goto again;
 	}
 
-	if (extent_only)
+	if (extent_only || device_only)
 		return 0;
 
+	if (root_backups)
+		print_old_roots(&info->super_copy);
+
 	printf("total bytes %llu\n",
-	       (unsigned long long)btrfs_super_total_bytes(&root->fs_info->super_copy));
+	       (unsigned long long)btrfs_super_total_bytes(&info->super_copy));
 	printf("bytes used %llu\n",
-	       (unsigned long long)btrfs_super_bytes_used(&root->fs_info->super_copy));
+	       (unsigned long long)btrfs_super_bytes_used(&info->super_copy));
 	uuidbuf[36] = '\0';
-	uuid_unparse(root->fs_info->super_copy.fsid, uuidbuf);
+	uuid_unparse(info->super_copy.fsid, uuidbuf);
 	printf("uuid %s\n", uuidbuf);
 	printf("%s\n", BTRFS_BUILD_VERSION);
 	return 0;

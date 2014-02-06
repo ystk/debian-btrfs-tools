@@ -1,3 +1,9 @@
 01-labels.patch
 02-ftbfs.patch
-03-glibc.patch
+03-manpage.patch
+04-linker.patch
+05-gzip.patch
+06-armel.patch
+07-manpage2.patch
+08-fsck.patch
+09-unaligned-memaccess.patch

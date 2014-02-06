@@ -1,82 +1,34 @@
-Upstream-Contact: Btrfs project <linux-btrfs@vger.kernel.org>
-Upstream-Homepage: http://btrfs.wiki.kernel.org/
-Maintainer-Contact: Daniel Baumann <daniel@lists.debian-maintainers.org>
-Maintainer-Homepage: http://daniel.debian-maintainers.org/
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: btrfs-progs
+Upstream-Contact: linux-btrfs@vger.kernel.org
+Source: http://git.kernel.org/?p=linux/kernel/git/mason/btrfs-progs.git
 
 Files: *
-Copyright: (C) 2007-2010 Oracle <http://www.oracle.com/>
+Copyright: 2007-2012 Oracle <http://www.oracle.com/>
 License: GPL-2+
- This program is free software; you can redistribute it and/or
- modify it under the terms of the GNU General Public License
- as published by the Free Software Foundation; either version 2
- of the License, or (at your option) any later version.
- .
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- GNU General Public License for more details.
- .
- You should have received a copy of the GNU General Public License
- along with this program; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- .
- On Debian systems, the complete text of the GNU General Public License
- can be found in /usr/share/common-licenses/GPL-2 file.
 
 Files: radix-tree.c
-Copyright:
- (C) 2007-2009 Oracle <http://www.oracle.com/>
- (C) 2001 Momchil Velikov
- (C) 2001 Christoph Hellwig
- (C) 2005 SGI, Christoph Lameter <clameter@sgi.com>
+Copyright: 2007-2009 Oracle <http://www.oracle.com/>
+           2001 Momchil Velikov
+           2001 Christoph Hellwig
+           2005 SGI, Christoph Lameter <clameter@sgi.com>
 License: GPL-2+
- This program is free software; you can redistribute it and/or
- modify it under the terms of the GNU General Public License
- as published by the Free Software Foundation; either version 2
- of the License, or (at your option) any later version.
- .
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- GNU General Public License for more details.
- .
- You should have received a copy of the GNU General Public License
- along with this program; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- .
- On Debian systems, the complete text of the GNU General Public License
- can be found in /usr/share/common-licenses/GPL-2 file.
 
 Files: radix-tree.h
-Copyright:
- (C) 2007-2009 Oracle <http://www.oracle.com/>
- (C) 2001 Momchil Velikov
- (C) 2001 Christoph Hellwig
+Copyright: 2007-2009 Oracle <http://www.oracle.com/>
+           2001 Momchil Velikov
+           2001 Christoph Hellwig
 License: GPL-2+
- This program is free software; you can redistribute it and/or
- modify it under the terms of the GNU General Public License
- as published by the Free Software Foundation; either version 2
- of the License, or (at your option) any later version.
- .
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- GNU General Public License for more details.
- .
- You should have received a copy of the GNU General Public License
- along with this program; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- .
- On Debian systems, the complete text of the GNU General Public License
- can be found in /usr/share/common-licenses/GPL-2 file.
 
 Files: debian/*
-Copyright: (C) 2007-2010 Daniel Baumann <daniel@debian.org>
+Copyright: 2007-2012 Daniel Baumann <daniel.baumann@progress-technologies.net>
 License: GPL-2+
- This program is free software; you can redistribute it and/or
- modify it under the terms of the GNU General Public License
- as published by the Free Software Foundation; either version 2
- of the License, or (at your option) any later version.
+
+License: GPL-2+
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 2 of the License, or
+ (at your option) any later version.
  .
  This program is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -84,8 +36,7 @@ License: GPL-2+
  GNU General Public License for more details.
  .
  You should have received a copy of the GNU General Public License
- along with this program; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ along with this program. If not, see <http://www.gnu.org/licenses/>.
  .
- On Debian systems, the complete text of the GNU General Public License
+ The complete text of the GNU General Public License
  can be found in /usr/share/common-licenses/GPL-2 file.

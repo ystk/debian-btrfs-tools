@@ -857,7 +857,7 @@ static int copy_single_xattr(struct btrfs_trans_handle *trans,
 		data = databuf;
 		datalen = bufsize;
 	}
-	strcpy(namebuf, xattr_prefix_table[name_index]);
+	strncpy(namebuf, xattr_prefix_table[name_index], XATTR_NAME_MAX);
 	strncat(namebuf, EXT2_EXT_ATTR_NAME(entry), entry->e_name_len);
 	if (name_len + datalen > BTRFS_LEAF_DATA_SIZE(root) -
 	    sizeof(struct btrfs_item) - sizeof(struct btrfs_dir_item)) {
@@ -1120,7 +1120,7 @@ fail:
 	return ret;
 }
 /*
- * scan ext2's inode bitmap and copy all used inode.
+ * scan ext2's inode bitmap and copy all used inodes.
  */
 static int copy_inodes(struct btrfs_root *root, ext2_filsys ext2_fs,
 		       int datacsum, int packing, int noxattr)
@@ -1504,66 +1504,6 @@ fail:
 	return new_root;
 }
 
-/*
- * Fixup block accounting. The initial block accounting created by
- * make_block_groups isn't accuracy in this case.
- */
-static int fixup_block_accounting(struct btrfs_trans_handle *trans,
-				  struct btrfs_root *root)
-{
-	int ret;
-	int slot;
-	u64 start = 0;
-	u64 bytes_used = 0;
-	struct btrfs_path path;
-	struct btrfs_key key;
-	struct extent_buffer *leaf;
-	struct btrfs_block_group_cache *cache;
-	struct btrfs_fs_info *fs_info = root->fs_info;
-
-	while(1) {
-		cache = btrfs_lookup_block_group(fs_info, start);
-		if (!cache)
-			break;
-		start = cache->key.objectid + cache->key.offset;
-		btrfs_set_block_group_used(&cache->item, 0);
-		cache->space_info->bytes_used = 0;
-	}
-
-	btrfs_init_path(&path);
-	key.offset = 0;
-	key.objectid = 0;
-	btrfs_set_key_type(&key, BTRFS_EXTENT_ITEM_KEY);
-	ret = btrfs_search_slot(trans, root->fs_info->extent_root,
-				&key, &path, 0, 0);
-	if (ret < 0)
-		return ret;
-	while(1) {
-		leaf = path.nodes[0];
-		slot = path.slots[0];
-		if (slot >= btrfs_header_nritems(leaf)) {
-			ret = btrfs_next_leaf(root, &path);
-			if (ret < 0)
-				return ret;
-			if (ret > 0)
-				break;
-			leaf = path.nodes[0];
-			slot = path.slots[0];
-		}
-		btrfs_item_key_to_cpu(leaf, &key, slot);
-		if (key.type == BTRFS_EXTENT_ITEM_KEY) {
-			bytes_used += key.offset;
-			ret = btrfs_update_block_group(trans, root,
-				  key.objectid, key.offset, 1, 0);
-			BUG_ON(ret);
-		}
-		path.slots[0]++;
-	}
-	btrfs_set_super_bytes_used(&root->fs_info->super_copy, bytes_used);
-	btrfs_release_path(root, &path);
-	return 0;
-}
-
 static int create_chunk_mapping(struct btrfs_trans_handle *trans,
 				struct btrfs_root *root)
 {
@@ -1735,7 +1675,7 @@ static int init_btrfs(struct btrfs_root *root)
 	ret = btrfs_make_block_groups(trans, root);
 	if (ret)
 		goto err;
-	ret = fixup_block_accounting(trans, root);
+	ret = btrfs_fix_block_accounting(trans, root);
 	if (ret)
 		goto err;
 	ret = create_chunk_mapping(trans, root);

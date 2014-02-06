@@ -16,8 +16,8 @@ case "${1}" in
 		;;
 esac
 
-if [ -x /sbin/btrfsctl ]
+if [ -x /sbin/btrfs ]
 then
 	modprobe btrfs
-	/sbin/btrfsctl -a 2>/dev/null
+	/sbin/btrfs device scan 2> /dev/null
 fi

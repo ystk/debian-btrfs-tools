@@ -5,34 +5,56 @@
 .SH NAME
 btrfs \- control a btrfs filesystem
 .SH SYNOPSIS
-\fBbtrfs\fP \fBsubvolume snapshot\fP\fI <source> [<dest>/]<name>\fP
+\fBbtrfs\fP \fBsubvolume snapshot\fP\fI [-r] <source> [<dest>/]<name>\fP
 .PP
 \fBbtrfs\fP \fBsubvolume delete\fP\fI <subvolume>\fP
 .PP
 \fBbtrfs\fP \fBsubvolume create\fP\fI [<dest>/]<name>\fP
 .PP
-\fBbtrfs\fP \fBsubvolume list\fP\fI <path>\fP
+\fBbtrfs\fP \fBsubvolume list\fP\fI [-p] <path>\fP
 .PP
 \fBbtrfs\fP \fBsubvolume set-default\fP\fI <id> <path>\fP
 .PP
-\fBbtrfs\fP \fBfilesystem defrag\fP\fI <file>|<dir> [<file>|<dir>...]\fP
+\fBbtrfs\fP \fBsubvolume get-default\fP\fI <path>\fP
 .PP
 \fBbtrfs\fP \fBfilesystem sync\fP\fI <path> \fP
 .PP
 \fBbtrfs\fP \fBfilesystem resize\fP\fI [+/\-]<size>[gkm]|max <filesystem>\fP
 .PP
-\fBbtrfs\fP \fBdevice scan\fP\fI [<device> [<device>..]]\fP
+\fBbtrfs\fP \fBfilesystem label\fP\fI <dev> [newlabel]\fP
 .PP
-\fBbtrfs\fP \fBdevice show\fP\fI <dev>|<label> [<dev>|<label>...]\fP
+\fBbtrfs\fP \fBfilesystem defrag\fP\fI [options] <file>|<dir> [<file>|<dir>...]\fP
 .PP
-\fBbtrfs\fP \fBdevice balance\fP\fI <path> \fP
+\fBbtrfs\fP \fBsubvolume find-new\fP\fI <subvolume> <last_gen>\fP
 .PP
-\fBbtrfs\fP \fBdevice add\fP\fI <dev> [<dev>..] <path> \fP
+\fBbtrfs\fP \fBfilesystem balance\fP\fI <path> \fP
 .PP
-\fBbtrfs\fP \fBdevice delete\fP\fI <dev> [<dev>..] <path> \fP]
-
+\fBbtrfs\fP \fBfilesystem defragment\fP\fI <file>|<dir> [<file>|<dir>...]\fP
+.PP
+\fBbtrfs\fP \fBdevice scan\fP\fI [--all-devices|<device> [<device>...]]\fP
+.PP
+\fBbtrfs\fP \fBdevice show\fP\fI [--all-devices|<uuid>|<label>]\fP
+.PP
+\fBbtrfs\fP \fBdevice add\fP\fI <device> [<device>...] <path> \fP
+.PP
+\fBbtrfs\fP \fBdevice delete\fP\fI <device> [<device>...] <path> \fP
+.PP
+\fBbtrfs\fP \fBscrub start\fP [-Bdqru] {\fI<path>\fP|\fI<device>\fP}
+.PP
+\fBbtrfs\fP \fBscrub cancel\fP {\fI<path>\fP|\fI<device>\fP}
+.PP
+\fBbtrfs\fP \fBscrub resume\fP [-Bdqru] {\fI<path>\fP|\fI<device>\fP}
+.PP
+\fBbtrfs\fP \fBscrub status\fP [-d] {\fI<path>\fP|\fI<device>\fP}
+.PP
+\fBbtrfs\fP \fBinspect-internal inode-resolve\fP [-v] \fI<inode>\fP \fI<path>\fP
+.PP
+\fBbtrfs\fP \fBinspect-internal logical-resolve\fP
+[-Pv] \fI<logical>\fP \fI<path>\fP
 .PP
 \fBbtrfs\fP \fBhelp|\-\-help|\-h \fP\fI\fP
+.PP
+\fBbtrfs\fP \fB<command> \-\-help \fP\fI\fP
 .PP
 .SH DESCRIPTION
 .B btrfs
@@ -47,33 +69,33 @@ For example: it is possible to run
 instead of
 .I btrfs subvolume snapshot.
 But
-.I btrfs dev s
+.I btrfs file s
 is not allowed, because
-.I dev s
+.I file s
 may be interpreted both as
-.I device show
+.I filesystem show
 and as
-.I device scan.
+.I filesystem sync.
 In this case
 .I btrfs
-returns an error.
-
+returnsfilesystem sync
 If a command is terminated by
 .I --help
-, the relevant help is showed. If the passed command matches more commands,
-the help of all the matched commands are showed. For example
+, the detailed help is showed. If the passed command matches more commands,
+detailed help of all the matched commands is showed. For example
 .I btrfs dev --help
 shows the help of all
 .I device*
-command.
+commands.
 
 .SH COMMANDS
 .TP
 
-\fBsubvolume snapshot\fR\fI <source> [<dest>/]<name>\fR
-Create a writable snapshot of the subvolume \fI<source>\fR with the name
-\fI<name>\fR in the \fI<dest>\fR directory. If \fI<source>\fR is not a
-subvolume, \fBbtrfs\fR returns an error.
+\fBsubvolume snapshot\fR\fI [-r] <source> [<dest>/]<name>\fR
+Create a writable/readonly snapshot of the subvolume \fI<source>\fR with the
+name \fI<name>\fR in the \fI<dest>\fR directory. If \fI<source>\fR is not a
+subvolume, \fBbtrfs\fR returns an error. If \fI-r\fR is given, the snapshot
+will be readonly.
 .TP
 
 \fBsubvolume delete\fR\fI <subvolume>\fR
@@ -86,29 +108,54 @@ Create a subvolume in \fI<dest>\fR (or in the current directory if
 \fI<dest>\fR is omitted).
 .TP
 
-\fBsubvolume list\fR\fI <path>\fR
+\fBsubvolume list\fR\fI [-p] <path>\fR
 List the subvolumes present in the filesystem \fI<path>\fR. For every
-subvolume is showed the subvolume ID (second column), 
-the ID of the \fItop level\fR 
-subvolume (fifth column), and the path (seventh column) relative to the
-\fItop level\fR subvolume.
-These <ID> may be used by the \fBsubvolume set-default\fR command, or at
-mount time via the \fIsubvol=\fR option.
+subvolume the following information is shown by default.
+ID <ID> top level <ID> path <path>
+where path is the relative path of the subvolume to the \fItop level\fR
+subvolume.
+The subvolume's ID may be used by the \fBsubvolume set-default\fR command, or
+at mount time via the \fIsubvol=\fR option.
+If \fI-p\fR is given, then \fIparent <ID>\fR is added to the output between ID
+and top level. The parent's ID may be used at mount time via the
+\fIsubvolrootid=\fR option.
 .TP
 
 \fBsubvolume set-default\fR\fI <id> <path>\fR
 Set the subvolume of the filesystem \fI<path>\fR which is mounted as 
-\fIdefault\fR. The subvolume is identified by \fB<id>\fR, which 
+\fIdefault\fR. The subvolume is identified by \fI<id>\fR, which 
 is returned by the \fBsubvolume list\fR command.
 .TP
 
-\fBfilesystem defragment\fP\fI <file>|<dir> [<file>|<dir>...]\fR
-Defragment files and/or directories.
+\fBsubvolume get-default\fR\fI <path>\fR
+Get the default subvolume of the filesystem \fI<path>\fR. The output format
+is similar to \fBsubvolume list\fR command.
 .TP
 
-\fBdevice scan\fR \fI[<device> [<device>..]]\fR
-Scan devices for a btrfs filesystem. If no devices are passed, \fBbtrfs\fR scans
-all the block devices.
+\fBfilesystem defragment\fP -c[zlib|lzo] [-l \fIlen\fR] [-s \fIstart\fR] [-t \fIsize\fR] -[vf] <\fIfile\fR>|<\fIdir\fR> [<\fIfile\fR>|<\fIdir\fR>...]
+
+Defragment file data and/or directory metadata. To defragment all files in a
+directory you have to specify each one on its own or use your shell wildcards.
+
+The start position and the number of bytes to deframention can be specified by \fIstart\fR and \fIlen\fR. Any extent bigger than \fIthresh\fR will be considered already defragged. Use 0 to take the kernel default, and use 1 to say eveery single extent must be rewritten. You can also turn on compression in defragment operations.
+
+\fB-v\fP be verbose
+
+\fB-c\fP compress file contents while defragmenting
+
+\fB-f\fP flush filesystem after defragmenting
+
+\fB-s start\fP defragment only from byte \fIstart\fR onward
+
+\fB-l len\fP defragment only up to \fIlen\fR bytes
+
+\fB-t size\fP defragment only files at least \fIsize\fR bytes big
+
+NOTE: defragmenting with kernels up to 2.6.37 will unlink COW-ed copies of data, don't 
+use it if you use snapshots, have de-duplicated your data or made copies with 
+\fBcp --reflink\fP.
+\fBsubvolume find-new\fR\fI <subvolume> <last_gen>\fR
+List the recently modified files in a subvolume, after \fI<last_gen>\fR ID.
 .TP
 
 \fBfilesystem sync\fR\fI <path> \fR
@@ -138,9 +185,28 @@ can expand the partition before enlarging the filesystem and shrink the
 partition after reducing the size of the filesystem.
 .TP
 
-\fBfilesystem show\fR [<uuid>|<label>]\fR
-Show the btrfs filesystem with some additional info. If no UUID or label is
-passed, \fBbtrfs\fR show info of all the btrfs filesystem.
+\fBbtrfs\fP \fBfilesystem label\fP\fI <dev> [newlabel]\fP
+Show or update the label of a filesystem. \fI<dev>\fR is used to identify the
+filesystem. 
+If a \fInewlabel\fR optional argument is passed, the label is changed. The
+following costraints exist for a label:
+.IP
+- the maximum allowable lenght shall be less or equal than 256 chars
+.IP
+- the label shall not  contain the '/' or '\\' characters.
+
+NOTE: Currently there are the following limitations:
+.IP
+- the filesystem has to be unmounted
+.IP
+- the filesystem should not have more than one device.
+.TP
+
+\fBfilesystem show\fR [--all-devices|<uuid>|<label>]\fR
+Show the btrfs filesystem with some additional info. If no \fIUUID\fP or 
+\fIlabel\fP is passed, \fBbtrfs\fR show info of all the btrfs filesystem.
+If \fB--all-devices\fP is passed, all the devices under /dev are scanned;
+otherwise the devices list is extracted from the /proc/partitions file.
 .TP
 
 \fBdevice balance\fR \fI<path>\fR
@@ -154,7 +220,93 @@ Add device(s) to the filesystem identified by \fI<path>\fR.
 
 \fBdevice delete\fR\fI <dev> [<dev>..] <path>\fR
 Remove device(s) from a filesystem identified by \fI<path>\fR.
-.PP
+.TP
+
+\fBdevice scan\fR \fI[--all-devices|<device> [<device>...]\fR
+If one or more devices are passed, these are scanned for a btrfs filesystem. 
+If no devices are passed, \fBbtrfs\fR scans all the block devices listed
+in the /proc/partitions file.
+Finally, if \fB--all-devices\fP is passed, all the devices under /dev are 
+scanned.
+.TP
+
+\fBscrub start\fP [-Bdqru] {\fI<path>\fP|\fI<device>\fP}
+Start a scrub on all devices of the filesystem identified by \fI<path>\fR or on
+a single \fI<device>\fR. Without options, scrub is started as a background
+process. Progress can be obtained with the \fBscrub status\fR command. Scrubbing
+involves reading all data from all disks and verifying checksums. Errors are
+corrected along the way if possible.
+.RS
+
+\fIOptions\fR
+.IP -B 5
+Do not background and print scrub statistics when finished.
+.IP -d 5
+Print separate statistics for each device of the filesystem (-B only).
+.IP -q 5
+Quiet. Omit error messages and statistics.
+.IP -r 5
+Read only mode. Do not attempt to correct anything.
+.IP -u 5
+Scrub unused space as well. (NOT IMPLEMENTED)
+.RE
+.TP
+
+\fBscrub cancel\fP {\fI<path>\fP|\fI<device>\fP}
+If a scrub is running on the filesystem identified by \fI<path>\fR, cancel it.
+Progress is saved in the scrub progress file and scrubbing can be resumed later
+using the \fBscrub resume\fR command.
+If a \fI<device>\fR is given, the corresponding filesystem is found and
+\fBscrub cancel\fP behaves as if it was called on that filesystem.
+.TP
+
+\fBscrub resume\fP [-Bdqru] {\fI<path>\fP|\fI<device>\fP}
+Resume a canceled or interrupted scrub cycle on the filesystem identified by
+\fI<path>\fR or on a given \fI<device>\fR. Does not start a new scrub if the
+last scrub finished successfully.
+.RS
+
+\fIOptions\fR
+.TP
+see \fBscrub start\fP.
+.RE
+.TP
+
+\fBscrub status\fP [-d] {\fI<path>\fP|\fI<device>\fP}
+Show status of a running scrub for the filesystem identified by \fI<path>\fR or
+for the specified \fI<device>\fR.
+If no scrub is running, show statistics of the last finished or canceled scrub
+for that filesystem or device.
+.RS
+
+\fIOptions\fR
+.IP -d 5
+Print separate statistics for each device of the filesystem.
+.RE
+.TP
+
+\fBinspect-internal inode-resolve\fP [-v] \fI<inode>\fP \fI<path>\fP
+Resolves an <inode> in subvolume <path> to all filesystem paths.
+.RS
+
+\fIOptions\fR
+.IP -v 5
+verbose mode. print count of returned paths and ioctl() return value
+.RE
+.TP
+
+\fBinspect-internal logical-resolve\fP [-Pv] \fI<logical>\fP \fI<path>\fP
+Resolves a <logical> address in the filesystem mounted at <path> to all inodes.
+By default, each inode is then resolved to a file system path (similar to the
+\fBinode-resolve\fP subcommand).
+.RS
+
+\fIOptions\fR
+.IP -P 5
+skip the path resolving and print the inodes instead
+.IP -v 5
+verbose mode. print count of returned paths and all ioctl() return values
+.RE
 
 .SH EXIT STATUS
 \fBbtrfs\fR returns a zero exist status if it succeeds. Non zero is returned in
