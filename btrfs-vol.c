@@ -78,6 +78,11 @@ int main(int ac, char **av)
 	struct btrfs_ioctl_vol_args args;
 	u64 dev_block_count = 0;
 
+	printf( "**\n"
+		"** WARNING: this program is considered deprecated\n"
+		"** Please consider to switch to the btrfs utility\n"
+		"**\n");
+
 	while(1) {
 		int c;
 		c = getopt_long(ac, av, "a:br:", long_options,
@@ -108,10 +113,24 @@ int main(int ac, char **av)
 	if (device && strcmp(device, "missing") == 0 &&
 	    cmd == BTRFS_IOC_RM_DEV) {
 		fprintf(stderr, "removing missing devices from %s\n", mnt);
-	} else if (device) {
+	} else if (cmd != BTRFS_IOC_BALANCE) {
+		if (cmd == BTRFS_IOC_ADD_DEV) {
+			ret = check_mounted(device);
+			if (ret < 0) {
+				fprintf(stderr,
+					"error checking %s mount status\n",
+					device);
+				exit(1);
+			}
+			if (ret == 1) {
+				fprintf(stderr, "%s is mounted\n", device);
+				exit(1);
+			}
+		}
 		devfd = open(device, O_RDWR);
-		if (!devfd) {
+		if (devfd < 0) {
 			fprintf(stderr, "Unable to open device %s\n", device);
+			exit(1);
 		}
 		ret = fstat(devfd, &st);
 		if (ret) {
@@ -129,7 +148,9 @@ int main(int ac, char **av)
 		exit(1);
 	}
 	if (cmd == BTRFS_IOC_ADD_DEV) {
-		ret = btrfs_prepare_device(devfd, device, 1, &dev_block_count);
+		int mixed = 0;
+
+		ret = btrfs_prepare_device(devfd, device, 1, &dev_block_count, &mixed);
 		if (ret) {
 			fprintf(stderr, "Unable to init %s\n", device);
 			exit(1);

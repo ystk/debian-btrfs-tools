@@ -103,9 +103,15 @@ int main(int ac, char **av)
 	int i;
 	unsigned long command = 0;
 	int len;
+	char *pos;
 	char *fullpath;
 	u64 objectid = 0;
 
+	printf( "**\n"
+		"** WARNING: this program is considered deprecated\n"
+		"** Please consider to switch to the btrfs utility\n"
+		"**\n");
+	
 	if (ac == 2 && strcmp(av[1], "-a") == 0) {
 		fprintf(stderr, "Scanning for Btrfs filesystems\n");
 		btrfs_scan_one_dir("/dev", 1);
@@ -171,6 +177,16 @@ int main(int ac, char **av)
 			command = BTRFS_IOC_SNAP_DESTROY;
 			name = av[i + 1];
 			len = strlen(name);
+			pos = strchr(name, '/');
+			if (pos) {
+				if (*(pos + 1) == '\0')
+					*(pos) = '\0';
+				else {
+					fprintf(stderr,
+						"error: / not allowed in names\n");
+					exit(1);
+				}
+			}
 			if (len == 0 || len >= BTRFS_VOL_NAME_MAX) {
 				fprintf(stderr, "-D size too long\n");
 				exit(1);
@@ -226,7 +242,7 @@ int main(int ac, char **av)
 	 }
 
 	if (name)
-		strcpy(args.name, name);
+                strncpy(args.name, name, BTRFS_PATH_NAME_MAX + 1);
 	else
 		args.name[0] = '\0';
 
@@ -234,7 +250,7 @@ int main(int ac, char **av)
 		args.fd = fd;
 		ret = ioctl(snap_fd, command, &args);
 	} else if (command == BTRFS_IOC_DEFAULT_SUBVOL) {
-		printf("objectid is %llu\n", objectid);
+		printf("objectid is %llu\n", (unsigned long long)objectid);
 		ret = ioctl(fd, command, &objectid);
 	} else
 		ret = ioctl(fd, command, &args);
@@ -249,8 +265,8 @@ int main(int ac, char **av)
 	}
 	printf("%s\n", BTRFS_BUILD_VERSION);
 	if (ret)
-		exit(0);
-	else
 		exit(1);
+
+	return 0;
 }
 

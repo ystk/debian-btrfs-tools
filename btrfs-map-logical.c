@@ -41,7 +41,6 @@ struct extent_buffer *debug_read_block(struct btrfs_root *root, u64 bytenr,
 				     u32 blocksize, int copy)
 {
 	int ret;
-	int dev_nr;
 	struct extent_buffer *eb;
 	u64 length;
 	struct btrfs_multi_bio *multi = NULL;
@@ -53,7 +52,6 @@ struct extent_buffer *debug_read_block(struct btrfs_root *root, u64 bytenr,
 	if (!eb)
 		return NULL;
 
-	dev_nr = 0;
 	length = blocksize;
 	while (1) {
 		ret = btrfs_map_block(&root->fs_info->mapping_tree, READ,
@@ -65,8 +63,8 @@ struct extent_buffer *debug_read_block(struct btrfs_root *root, u64 bytenr,
 		eb->dev_bytenr = multi->stripes[0].physical;
 
 		fprintf(info_file, "mirror %d logical %Lu physical %Lu "
-			"device %s\n", mirror_num, bytenr, eb->dev_bytenr,
-			device->name);
+			"device %s\n", mirror_num, (unsigned long long)bytenr,
+			(unsigned long long)eb->dev_bytenr, device->name);
 		kfree(multi);
 
 		if (!copy || mirror_num == copy)
@@ -90,7 +88,7 @@ static void print_usage(void)
 	fprintf(stderr, "\t-l Logical extent to map\n");
 	fprintf(stderr, "\t-c Copy of the extent to read (usually 1 or 2)\n");
 	fprintf(stderr, "\t-o Output file to hold the extent\n");
-	fprintf(stderr, "\t-s Number of bytes to read\n");
+	fprintf(stderr, "\t-b Number of bytes to read\n");
 	exit(1);
 }
 
@@ -175,6 +173,7 @@ int main(int ac, char **av)
 		exit(1);
 	}
 
+	info_file = stdout;
 	if (output_file) {
 		if (strcmp(output_file, "-") == 0) {
 			out_fd = 1;
