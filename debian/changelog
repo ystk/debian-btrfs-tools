@@ -1,10 +1,182 @@
-btrfs-tools (0.19+20120328-7.1) wheezy; urgency=low
+btrfs-tools (3.14.1-1) unstable; urgency=medium
 
-  * Non-maintainer upload.
-  * Move udev rules file from 60-btrfs.rules to 70-btrfs.rules so it runs
-    after blkid (closes: #701642).  Thanks, Bastian Blank!
+  * New upstream release.
+  * Switch to git-dpm.
+  * Rebase and cleanup patches.
 
- -- Julien Cristau <jcristau@debian.org>  Thu, 28 Feb 2013 19:54:48 +0100
+ -- Dimitri John Ledkov <xnox@debian.org>  Sat, 19 Apr 2014 12:12:11 +0100
+
+btrfs-tools (3.12-1) unstable; urgency=low
+
+  [ Julien Muchembled ]
+  * New upstream release. (Closes: #732075, #732533)
+  * Drop patches merged upstream:
+    - 07-manpage2.patch
+    - 10-soname.patch
+    - Btrfs-progs-fix-wrong-arg-sb_bytenr-for-btrfs_scan_fs_devices.patch
+  * Refresh patches. (Closes: #719072)
+
+  [ Dimitri John Ledkov ]
+  * Add watch file.
+  * Bump standards version to 3.9.5.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Wed, 01 Jan 2014 01:52:43 +0000
+
+btrfs-tools (0.19+20130705-3) unstable; urgency=low
+
+  * Import patch by Shilong Wang to resolve btrfs-convert (Closes:
+    #724265) (LP: #1228302)
+
+ -- Dmitrijs Ledkovs <xnox@ubuntu.com>  Fri, 18 Oct 2013 23:47:16 +0100
+
+btrfs-tools (0.19+20130705-2) unstable; urgency=low
+
+  * Copy btrfs-zero-log into initramfs, useful for recovering (Closes: #721857)
+
+ -- Dmitrijs Ledkovs <dmitrij.ledkov@ubuntu.com>  Mon, 16 Sep 2013 14:54:54 +0100
+
+btrfs-tools (0.19+20130705-1) unstable; urgency=low
+
+  * New upstream snapshot. (Closes: #720932)
+  * Refresh patches.
+  * btrfsctl is gone, and calc-size is prefixed with btrfs- upstream now.
+  * Enable verbose build-log.
+
+ -- Dmitrijs Ledkovs <dmitrij.ledkov@ubuntu.com>  Mon, 26 Aug 2013 19:14:51 +0100
+
+btrfs-tools (0.19+20130315-5) unstable; urgency=low
+
+  * Provide "proper" fsck.btrfs, similar in spirit to fsck.xfs, that
+    redirects users to use `btrfs check` and `btrfs restore` and exits
+    with 0. (Closes: #715242) (Closes: #716989)
+    Ideally, all btrfs mount points should be specified with fs_passno 0
+    in fstab. If fstab is migrated to that, I'd want to consider dropping
+    fsck.btrfs wrapper.
+
+ -- Dmitrijs Ledkovs <xnox@debian.org>  Wed, 31 Jul 2013 14:52:17 +0100
+
+btrfs-tools (0.19+20130315-4) unstable; urgency=low
+
+  * Drop grub.d hacks, as initscripts correctly skips btrfs volumes for
+    now. See bug #701956. And force remove hack on upgrade.
+  * Conditionally include fsck.btrfs, if there is no generic fsck hook (Closes: 717867)
+  * Install libraries in a multi-arch location. (Closes: #717868)
+  * Drop dh_builddeb compression override to xz, use dpkg default instead,
+    which is xz now anyway.
+
+ -- Dmitrijs Ledkovs <xnox@debian.org>  Mon, 29 Jul 2013 14:51:19 +0100
+
+btrfs-tools (0.19+20130315-3) unstable; urgency=low
+
+  * New maintainer (Closes: #717564)
+    - Thanks a lot to Luk and Daniel for previous
+      maintainership. Co-maintainance is welcome!
+  * Include fsck.btrfs in the initramfs
+  * Use correct compiler, when cross-compiling
+  * Default to act like fsck. (Closes: #712078)
+  * Apply a gross hack to set fastboot for grub, if root is on btrfs
+    because of bug 701936. One still needs to manually run update-grub.
+
+ -- Dmitrijs Ledkovs <xnox@debian.org>  Tue, 23 Jul 2013 16:12:29 +0100
+
+btrfs-tools (0.19+20130315-2) unstable; urgency=low
+
+  * Fix unaligned access issue thanks to Holger Fischer.
+
+ -- Luk Claes <luk@debian.org>  Mon, 20 May 2013 11:01:16 +0200
+
+btrfs-tools (0.19+20130315-1) experimental; urgency=low
+
+  * New upstream version.
+    - Drop 01-labels.patch
+    - Update patches
+    - Drop 05-gzip.patch
+    - Drop 06-armel.patch
+    - Drop 08-fsck.patch
+    - Drop 10-loop.patch
+  * Add build dependency on libblkid-dev and liblzo2-dev.
+  * Add lintian overrides as it does not make sense to split this
+    small a package.
+  * Set soname in 10-soname.patch.
+  * Uploading to experimental as the unaligned access issue still
+    needs to be fixed.
+
+ -- Luk Claes <luk@debian.org>  Tue, 14 May 2013 15:23:45 +0200
+
+btrfs-tools (0.19+20130131-3+really20121004-1) unstable; urgency=low
+
+  * Taking over maintenance with maintainer's consent.
+  * Reverting to previous upstream (Closes: #701936).
+
+ -- Luk Claes <luk@debian.org>  Sun, 10 Mar 2013 22:28:39 +0100
+
+btrfs-tools (0.19+20130131-3) unstable; urgency=low
+
+  * Also ignoring fsck options -y, -C, and -V in btrfs check.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Fri, 08 Mar 2013 13:31:09 +0100
+
+btrfs-tools (0.19+20130131-2) unstable; urgency=low
+
+  * Replacing fsck.btrfs with wrapper arround 'btrfs check' to avoid
+    different behaviour based on the filename btrfs is copied to (Closes:
+    #701776).
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Wed, 27 Feb 2013 18:36:05 +0100
+
+btrfs-tools (0.19+20130131-1) unstable; urgency=low
+
+  * Merging upstream version 0.19+20130131.
+  * Updating copyright file for new upstream version.
+  * Updating years in copyright file.
+  * Prefixing patches with four digits.
+  * Trimming diff headers in patches.
+  * Dropping dpkg-source compression levels.
+  * Moving udev rules from 60-btrfs.rules to 70-btrfs.rules (Closes:
+    #701642).
+  * Dropping lables.patch, included upstream.
+  * Rediffing manpage.patch.
+  * Rediffing linker.patch.
+  * Dropping gzip.patch, not needed anymore.
+  * Dropping armel.patch, included upstream.
+  * Rediffing manpage2.patch.
+  * Dropping fsck.patch, not needed anymore.
+  * Rediffing unaligned-memaccess.patch.
+  * Dropping loop.patch, included upstream.
+  * Renumbering patches.
+  * Adding libblkid-dev to build-depends.
+  * Including show-blocks.
+  * Including bcp.
+  * Adding suggests to python.
+  * Adding lintian overrides.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Tue, 26 Feb 2013 12:12:39 +0100
+
+btrfs-tools (0.19+20121004-2) unstable; urgency=low
+
+  * Adding dpkg-source local options.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Tue, 11 Dec 2012 21:17:43 +0100
+
+btrfs-tools (0.19+20121004-1) unstable; urgency=low
+
+  * Updating standards version to 3.9.4.
+  * Merging upstream version 0.19+20121004.
+  * Rediffing linker.patch.
+  * Rediffing manpage2.patch.
+  * Rediffing fsck.patch.
+  * Adding patch from Nirbheek Chauhan <nirbheek.chauhan@collabora.co.uk>
+    to avoid truncating filenames in loopdevice images (Closes: #691235).
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Mon, 10 Dec 2012 11:09:05 +0100
+
+btrfs-tools (0.19+20120328-8) unstable; urgency=low
+
+  * Adding udev rule for btrfs on lvm, thanks to Daniel Pocock
+    <daniel@pocock.com.au> for testing (Closes: #685311).
+  * Adding postrm to rebuild initrd without btrfs on remove.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Tue, 21 Aug 2012 11:49:31 +0200
 
 btrfs-tools (0.19+20120328-7) unstable; urgency=low
 

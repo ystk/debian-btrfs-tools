@@ -18,6 +18,7 @@
 
 #ifndef __KERNCOMPAT
 #define __KERNCOMPAT
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -25,6 +26,8 @@
 #include <endian.h>
 #include <byteswap.h>
 #include <assert.h>
+#include <stddef.h>
+#include <linux/types.h>
 
 #ifndef READ
 #define READ 0
@@ -35,7 +38,7 @@
 #define gfp_t int
 #define get_cpu_var(p) (p)
 #define __get_cpu_var(p) (p)
-#define BITS_PER_LONG (sizeof(long) * 8)
+#define BITS_PER_LONG (__SIZEOF_LONG__ * 8)
 #define __GFP_BITS_SHIFT 20
 #define __GFP_BITS_MASK ((int)((1 << __GFP_BITS_SHIFT) - 1))
 #define GFP_KERNEL 0
@@ -47,7 +50,7 @@
 #define ULONG_MAX       (~0UL)
 #endif
 
-#define BUG() abort()
+#define BUG() assert(0)
 #ifdef __CHECKER__
 #define __force    __attribute__((force))
 #define __bitwise__ __attribute__((bitwise))
@@ -57,11 +60,22 @@
 #endif
 
 #ifndef __CHECKER__
+/*
+ * Since we're using primitive definitions from kernel-space, we need to
+ * define __KERNEL__ so that system header files know which definitions
+ * to use.
+ */
+#define __KERNEL__
 #include <asm/types.h>
 typedef __u32 u32;
 typedef __u64 u64;
 typedef __u16 u16;
 typedef __u8 u8;
+/*
+ * Continuing to define __KERNEL__ breaks others parts of the code, so
+ * we can just undefine it now that we have the correct headers...
+ */
+#undef __KERNEL__
 #else
 typedef unsigned int u32;
 typedef unsigned int __u32;
@@ -113,6 +127,10 @@ static inline int mutex_is_locked(struct mutex *m)
 
 #define BITOP_MASK(nr)		(1UL << ((nr) % BITS_PER_LONG))
 #define BITOP_WORD(nr)		((nr) / BITS_PER_LONG)
+
+#ifndef __attribute_const__
+#define __attribute_const__	__attribute__((__const__))
+#endif
 
 /**
  * __set_bit - Set a bit in memory
@@ -191,6 +209,16 @@ static inline long IS_ERR(const void *ptr)
 	({ type __x = (x); type __y = (y); __x > __y ? __x: __y; })
 
 /*
+ * This looks more complex than it should be. But we need to
+ * get the type for the ~ right in round_down (it needs to be
+ * as wide as the result!), and we want to evaluate the macro
+ * arguments just once each.
+ */
+#define __round_mask(x, y) ((__typeof__(x))((y)-1))
+#define round_up(x, y) ((((x)-1) | __round_mask(x, y))+1)
+#define round_down(x, y) ((x) & ~__round_mask(x, y))
+
+/*
  * printk
  */
 #define printk(fmt, args...) fprintf(stderr, fmt, ##args)
@@ -208,18 +236,11 @@ static inline long IS_ERR(const void *ptr)
 #define BUG_ON(c) assert(!(c))
 #define WARN_ON(c) assert(!(c))
 
-#undef offsetof
-#ifdef __compiler_offsetof
-#define offsetof(TYPE,MEMBER) __compiler_offsetof(TYPE,MEMBER)
-#else
-#define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
-#endif
 
 #define container_of(ptr, type, member) ({                      \
         const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
 	        (type *)( (char *)__mptr - offsetof(type,member) );})
 #ifdef __CHECKER__
-#define __CHECK_ENDIAN__
 #define __bitwise __bitwise__
 #else
 #define __bitwise
@@ -255,6 +276,19 @@ typedef u64 __bitwise __be64;
 #define cpu_to_le16(x) ((__force __le16)(u16)(x))
 #define le16_to_cpu(x) ((__force u16)(__le16)(x))
 #endif
+
+struct __una_u16 { __le16 x; } __attribute__((__packed__));
+struct __una_u32 { __le32 x; } __attribute__((__packed__));
+struct __una_u64 { __le64 x; } __attribute__((__packed__));
+
+#define get_unaligned_le8(p) (*((u8 *)(p)))
+#define put_unaligned_le8(val,p) ((*((u8 *)(p))) = (val))
+#define get_unaligned_le16(p) le16_to_cpu(((const struct __una_u16 *)(p))->x)
+#define put_unaligned_le16(val,p) (((struct __una_u16 *)(p))->x = cpu_to_le16(val))
+#define get_unaligned_le32(p) le32_to_cpu(((const struct __una_u32 *)(p))->x)
+#define put_unaligned_le32(val,p) (((struct __una_u32 *)(p))->x = cpu_to_le32(val))
+#define get_unaligned_le64(p) le64_to_cpu(((const struct __una_u64 *)(p))->x)
+#define put_unaligned_le64(val,p) (((struct __una_u64 *)(p))->x = cpu_to_le64(val))
 #endif
 
 #ifndef noinline

@@ -19,6 +19,8 @@
 #ifndef __BTRFS_VOLUMES_
 #define __BTRFS_VOLUMES_
 
+#define BTRFS_STRIPE_LEN	(64 * 1024)
+
 struct btrfs_device {
 	struct list_head dev_list;
 	struct btrfs_root *dev_root;
@@ -103,6 +105,8 @@ struct map_lookup {
 
 #define btrfs_multi_bio_size(n) (sizeof(struct btrfs_multi_bio) + \
 			    (sizeof(struct btrfs_bio_stripe) * (n)))
+#define btrfs_map_lookup_size(n) (sizeof(struct map_lookup) + \
+				 (sizeof(struct btrfs_bio_stripe) * (n)))
 
 /*
  * Restriper's general type filter
@@ -135,17 +139,18 @@ struct map_lookup {
 #define BTRFS_BALANCE_ARGS_CONVERT	(1ULL << 8)
 #define BTRFS_BALANCE_ARGS_SOFT		(1ULL << 9)
 
-int btrfs_alloc_dev_extent(struct btrfs_trans_handle *trans,
-			   struct btrfs_device *device,
-			   u64 chunk_tree, u64 chunk_objectid,
-			   u64 chunk_offset,
-			   u64 num_bytes, u64 *start);
+#define BTRFS_RAID5_P_STRIPE ((u64)-2)
+#define BTRFS_RAID6_Q_STRIPE ((u64)-1)
+
+
 int __btrfs_map_block(struct btrfs_mapping_tree *map_tree, int rw,
 		      u64 logical, u64 *length, u64 *type,
-		      struct btrfs_multi_bio **multi_ret, int mirror_num);
+		      struct btrfs_multi_bio **multi_ret, int mirror_num,
+		      u64 **raid_map);
 int btrfs_map_block(struct btrfs_mapping_tree *map_tree, int rw,
 		    u64 logical, u64 *length,
-		    struct btrfs_multi_bio **multi_ret, int mirror_num);
+		    struct btrfs_multi_bio **multi_ret, int mirror_num,
+		    u64 **raid_map_ret);
 int btrfs_next_metadata(struct btrfs_mapping_tree *map_tree, u64 *logical,
 			u64 *size);
 int btrfs_rmap_block(struct btrfs_mapping_tree *map_tree,
@@ -175,11 +180,18 @@ int btrfs_scan_one_device(int fd, const char *path,
 			  struct btrfs_fs_devices **fs_devices_ret,
 			  u64 *total_devs, u64 super_offset);
 int btrfs_num_copies(struct btrfs_mapping_tree *map_tree, u64 logical, u64 len);
-int btrfs_bootstrap_super_map(struct btrfs_mapping_tree *map_tree,
-			      struct btrfs_fs_devices *fs_devices);
 struct list_head *btrfs_scanned_uuids(void);
 int btrfs_add_system_chunk(struct btrfs_trans_handle *trans,
 			   struct btrfs_root *root, struct btrfs_key *key,
 			   struct btrfs_chunk *chunk, int item_size);
 int btrfs_chunk_readonly(struct btrfs_root *root, u64 chunk_offset);
+struct btrfs_device *
+btrfs_find_device_by_devid(struct btrfs_fs_devices *fs_devices,
+			   u64 devid, int instance);
+struct btrfs_device *btrfs_find_device(struct btrfs_root *root, u64 devid,
+				       u8 *uuid, u8 *fsid);
+int write_raid56_with_parity(struct btrfs_fs_info *info,
+			     struct extent_buffer *eb,
+			     struct btrfs_multi_bio *multi,
+			     u64 stripe_len, u64 *raid_map);
 #endif

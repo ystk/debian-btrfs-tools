@@ -1,0 +1,53 @@
+From 48d3bc412345fef09310387906aecd3f5974f167 Mon Sep 17 00:00:00 2001
+From: Daniel Baumann <daniel.baumann@progress-technologies.net>
+Date: Sat, 19 Apr 2014 11:40:35 +0100
+Subject: =?UTF-8?q?Update=20references=20to=20btrfs-tools=20instead=20of?=
+ =?UTF-8?q?=20btrfs-progs=20(upstream=20name)=20in=0Amanpages?=
+
+Bug-Debian: http://bugs.debian.org/599111
+Signed-off-by: Dimitri John Ledkov <xnox@debian.org>
+---
+ man/btrfs-image.8.in | 2 +-
+ man/btrfs.8.in       | 2 +-
+ man/mkfs.btrfs.8.in  | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/man/btrfs-image.8.in b/man/btrfs-image.8.in
+index 3f51f3f..899d785 100644
+--- a/man/btrfs-image.8.in
++++ b/man/btrfs-image.8.in
+@@ -47,7 +47,7 @@ option if your extent tree is corrupted to make sure that all of the metadata is
+ captured.
+ .SH AVAILABILITY
+ .B btrfs-image
+-is part of btrfs-progs. Btrfs is currently under heavy development,
++is part of btrfs-tools. Btrfs is currently under heavy development,
+ and not suitable for any uses other than benchmarking and review.
+ Please refer to the btrfs wiki
+ http://btrfs.wiki.kernel.org for further details.
+diff --git a/man/btrfs.8.in b/man/btrfs.8.in
+index 8fea115..544d7b4 100644
+--- a/man/btrfs.8.in
++++ b/man/btrfs.8.in
+@@ -777,7 +777,7 @@ case of failure.
+ 
+ .SH AVAILABILITY
+ .B btrfs
+-is part of btrfs-progs. Btrfs filesystem is currently under heavy development,
++is part of btrfs-tools. Btrfs filesystem is currently under heavy development,
+ and not suitable for any uses other than benchmarking and review.
+ Please refer to the btrfs wiki http://btrfs.wiki.kernel.org for
+ further details.
+diff --git a/man/mkfs.btrfs.8.in b/man/mkfs.btrfs.8.in
+index dabeb62..44e625c 100644
+--- a/man/mkfs.btrfs.8.in
++++ b/man/mkfs.btrfs.8.in
+@@ -97,7 +97,7 @@ As default the unit is the byte, however it is possible to append a suffix
+ to the arguments like \fBk\fP for KBytes, \fBm\fP for MBytes...
+ .SH AVAILABILITY
+ .B mkfs.btrfs
+-is part of btrfs-progs. Btrfs is currently under heavy development,
++is part of btrfs-tools. Btrfs is currently under heavy development,
+ and not suitable for any uses other than benchmarking and review.
+ Please refer to the btrfs wiki
+ http://btrfs.wiki.kernel.org for further details.

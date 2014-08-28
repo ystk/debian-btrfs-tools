@@ -31,14 +31,15 @@
 #include "transaction.h"
 #include "list.h"
 #include "version.h"
+#include "utils.h"
 
 /* we write the mirror info to stdout unless they are dumping the data
  * to stdout
  * */
 static FILE *info_file;
 
-struct extent_buffer *debug_read_block(struct btrfs_root *root, u64 bytenr,
-				     u32 blocksize, int copy)
+static struct extent_buffer * debug_read_block(struct btrfs_root *root,
+		u64 bytenr, u32 blocksize, u64 copy)
 {
 	int ret;
 	struct extent_buffer *eb;
@@ -55,8 +56,16 @@ struct extent_buffer *debug_read_block(struct btrfs_root *root, u64 bytenr,
 	length = blocksize;
 	while (1) {
 		ret = btrfs_map_block(&root->fs_info->mapping_tree, READ,
-				      eb->start, &length, &multi, mirror_num);
-		BUG_ON(ret);
+				      eb->start, &length, &multi,
+				      mirror_num, NULL);
+		if (ret) {
+			fprintf(info_file,
+				"Error: fails to map mirror%d logical %llu: %s\n",
+				mirror_num, (unsigned long long)eb->start,
+				strerror(-ret));
+			free_extent_buffer(eb);
+			return NULL;
+		}
 		device = multi->stripes[0].dev;
 		eb->fd = device->fd;
 		device->total_ios++;
@@ -68,7 +77,7 @@ struct extent_buffer *debug_read_block(struct btrfs_root *root, u64 bytenr,
 		kfree(multi);
 
 		if (!copy || mirror_num == copy)
-			ret = read_extent_from_disk(eb);
+			ret = read_extent_from_disk(eb, 0, eb->len);
 
 		num_copies = btrfs_num_copies(&root->fs_info->mapping_tree,
 					      eb->start, eb->len);
@@ -82,9 +91,10 @@ struct extent_buffer *debug_read_block(struct btrfs_root *root, u64 bytenr,
 	return eb;
 }
 
+static void print_usage(void) __attribute__((noreturn));
 static void print_usage(void)
 {
-	fprintf(stderr, "usage: btrfs-map-logical [options] mount_point\n");
+	fprintf(stderr, "usage: btrfs-map-logical [options] device\n");
 	fprintf(stderr, "\t-l Logical extent to map\n");
 	fprintf(stderr, "\t-c Copy of the extent to read (usually 1 or 2)\n");
 	fprintf(stderr, "\t-o Output file to hold the extent\n");
@@ -96,9 +106,9 @@ static struct option long_options[] = {
 	/* { "byte-count", 1, NULL, 'b' }, */
 	{ "logical", 1, NULL, 'l' },
 	{ "copy", 1, NULL, 'c' },
-	{ "output", 1, NULL, 'c' },
+	{ "output", 1, NULL, 'o' },
 	{ "bytes", 1, NULL, 'b' },
-	{ 0, 0, 0, 0}
+	{ NULL, 0, NULL, 0}
 };
 
 int main(int ac, char **av)
@@ -111,10 +121,9 @@ int main(int ac, char **av)
 	u64 logical = 0;
 	int ret = 0;
 	int option_index = 0;
-	int copy = 0;
+	u64 copy = 0;
 	u64 bytes = 0;
 	int out_fd = 0;
-	int err;
 
 	while(1) {
 		int c;
@@ -124,28 +133,13 @@ int main(int ac, char **av)
 			break;
 		switch(c) {
 			case 'l':
-				logical = atoll(optarg);
-				if (logical == 0) {
-					fprintf(stderr,
-						"invalid extent number\n");
-					print_usage();
-				}
+				logical = arg_strtou64(optarg);
 				break;
 			case 'c':
-				copy = atoi(optarg);
-				if (copy == 0) {
-					fprintf(stderr,
-						"invalid copy number\n");
-					print_usage();
-				}
+				copy = arg_strtou64(optarg);
 				break;
 			case 'b':
-				bytes = atoll(optarg);
-				if (bytes == 0) {
-					fprintf(stderr,
-						"invalid byte count\n");
-					print_usage();
-				}
+				bytes = arg_strtou64(optarg);
 				break;
 			case 'o':
 				output_file = strdup(optarg);
@@ -182,8 +176,9 @@ int main(int ac, char **av)
 			out_fd = open(output_file, O_RDWR | O_CREAT, 0600);
 			if (out_fd < 0)
 				goto close;
-			err = ftruncate(out_fd, 0);
-			if (err) {
+			ret = ftruncate(out_fd, 0);
+			if (ret) {
+				ret = 1;
 				close(out_fd);
 				goto close;
 			}
@@ -200,8 +195,9 @@ int main(int ac, char **av)
 	while (bytes > 0) {
 		eb = debug_read_block(root, logical, root->sectorsize, copy);
 		if (eb && output_file) {
-			err = write(out_fd, eb->data, eb->len);
-			if (err < 0 || err != eb->len) {
+			ret = write(out_fd, eb->data, eb->len);
+			if (ret < 0 || ret != eb->len) {
+				ret = 1;
 				fprintf(stderr, "output file write failed\n");
 				goto out_close_fd;
 			}

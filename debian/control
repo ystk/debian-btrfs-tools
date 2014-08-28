@@ -1,10 +1,15 @@
 Source: btrfs-tools
 Section: admin
 Priority: optional
-Maintainer: Daniel Baumann <daniel.baumann@progress-technologies.net>
-Build-Depends:
- debhelper (>= 9), e2fslibs-dev, libacl1-dev, uuid-dev, zlib1g-dev
-Standards-Version: 3.9.3
+Maintainer: Dimitri John Ledkov <xnox@debian.org>
+Build-Depends: debhelper (>= 9),
+               e2fslibs-dev,
+               libacl1-dev,
+               libblkid-dev,
+               liblzo2-dev,
+               uuid-dev,
+               zlib1g-dev
+Standards-Version: 3.9.5
 Homepage: http://btrfs.wiki.kernel.org/
 
 Package: btrfs-tools
@@ -15,7 +20,7 @@ Description: Checksumming Copy on Write Filesystem utilities
  advanced features while focusing on fault tolerance, repair and easy
  administration.
  .
- This package contains utilities (mkfs, fsck, btrfsctl) used to work with btrfs
+ This package contains utilities (mkfs, fsck) used to work with btrfs
  and an utility (btrfs-convert) to make a btrfs filesystem from an ext3.
 
 Package: btrfs-tools-udeb
@@ -29,7 +34,7 @@ Package: btrfs-tools-dbg
 Section: debug
 Priority: extra
 Architecture: linux-any
-Depends: ${misc:Depends}, btrfs-tools (= ${binary:Version})
+Depends: btrfs-tools (= ${binary:Version}), ${misc:Depends}
 Description: Checksumming Copy on Write Filesystem utilities (debug)
  Btrfs is a new copy on write filesystem for Linux aimed at implementing
  advanced features while focusing on fault tolerance, repair and easy

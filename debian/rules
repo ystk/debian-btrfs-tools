@@ -1,5 +1,12 @@
 #!/usr/bin/make -f
 
+include /usr/share/dpkg/architecture.mk
+ifneq ($(DEB_HOST_GNU_TYPE),$(DEB_BUILD_GNU_TYPE))
+  CC := $(DEB_HOST_GNU_TYPE)-gcc
+else
+  CC := gcc
+endif
+
 SHELL := sh -e
 
 CFLAGS := $(shell dpkg-buildflags --get CFLAGS)
@@ -9,15 +16,10 @@ CFLAGS := $(patsubst -O2,-Os,$(CFLAGS))
 	dh ${@}
 
 override_dh_auto_build:
-	dh_auto_build -- all btrfs-select-super calc-size CFLAGS="$(CFLAGS)"
-
-override_dh_auto_clean:
-	dh_auto_clean
-
-	rm -f btrfs-select-super calc-size
+	dh_auto_build -- all btrfs-select-super btrfs-calc-size CFLAGS="$(CFLAGS)" CC="$(CC)" BUILD_VERBOSE=1
 
 override_dh_auto_install:
-	dh_auto_install -- DESTDIR=$(CURDIR)/debian/btrfs-tools prefix=/ bindir=/sbin mandir=/usr/share/man
+	dh_auto_install -- DESTDIR=$(CURDIR)/debian/btrfs-tools prefix=/usr bindir=/sbin mandir=/usr/share/man libdir=/usr/lib/$(DEB_HOST_MULTIARCH)
 
 	# Fixing 'manpage-not-compressed-with-max-compression'
 	for _MANPAGE in $(CURDIR)/debian/btrfs-tools/usr/share/man/*/*.gz; \
@@ -28,19 +30,17 @@ override_dh_auto_install:
 
 	# Adding udev integration
 	install -D -m 0644 debian/local/btrfs.udev debian/btrfs-tools/lib/udev/rules.d/70-btrfs.rules
+	install -D -m 0644 debian/local/btrfs-lvm.udev debian/btrfs-tools/lib/udev/rules.d/80-btrfs-lvm.rules
 
 	# Adding initramfs-tools integration
 	install -D -m 0755 debian/local/btrfs.hook debian/btrfs-tools/usr/share/initramfs-tools/hooks/btrfs
 	install -D -m 0755 debian/local/btrfs.local-premount debian/btrfs-tools/usr/share/initramfs-tools/scripts/local-premount/btrfs
 
-override_dh_builddeb:
-	dh_builddeb -- -Zxz -z9
-
-override_dh_install:
-	dh_install
-
-	# Avoid polluting namespace
-	mv debian/btrfs-tools/sbin/calc-size debian/btrfs-tools/sbin/btrfs-calc-size
-
 override_dh_strip:
 	dh_strip --dbg-package=btrfs-tools-dbg
+
+# distclean target does not exist and make would waste time generating
+# dependency files and version.h before failing. debhelper < 9.20130624
+# would even think distclean exists because something is printed.
+override_dh_auto_clean:
+	make clean

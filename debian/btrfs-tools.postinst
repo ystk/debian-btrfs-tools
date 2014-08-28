@@ -8,6 +8,7 @@ case "${1}" in
 		then
 			update-initramfs -u
 		fi
+		rm -f /etc/default/grub.d/50_btrfs_enable_fastboot.cfg
 		;;
 
 	abort-upgrade|abort-remove|abort-deconfigure)

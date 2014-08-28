@@ -1,3 +1,2 @@
 btrfs		/sbin
-btrfsctl	/sbin
 mkfs.btrfs	/sbin

@@ -1,9 +1,5 @@
-01-labels.patch
-02-ftbfs.patch
-03-manpage.patch
-04-linker.patch
-05-gzip.patch
-06-armel.patch
-07-manpage2.patch
-08-fsck.patch
-09-unaligned-memaccess.patch
+0001-Properly-cast-to-avoid-compiler-warnings-fixes-FTBFS.patch
+0002-Fixes-FTBFS-with-no-add-needed.patch
+0003-Fixing-unaligned-memory-accesses.patch
+0004-Default-to-acting-like-fsck.patch
+0005-Update-references-to-btrfs-tools-instead-of-btrfs-pr.patch
