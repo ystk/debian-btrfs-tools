@@ -43,7 +43,7 @@ int main(int ac, char **av)
 {
 	struct btrfs_root *root;
 	int ret;
-	int num;
+	u64 num = 0;
 	u64 bytenr = 0;
 
 	while(1) {
@@ -53,10 +53,14 @@ int main(int ac, char **av)
 			break;
 		switch(c) {
 			case 's':
-				num = atol(optarg);
-				bytenr = btrfs_sb_offset(num);
-				printf("using SB copy %d, bytenr %llu\n", num,
-				       (unsigned long long)bytenr);
+				num = arg_strtou64(optarg);
+				if (num >= BTRFS_SUPER_MIRROR_MAX) {
+					fprintf(stderr,
+						"ERROR: super mirror should be less than: %d\n",
+						BTRFS_SUPER_MIRROR_MAX);
+					exit(1);
+				}
+				bytenr = btrfs_sb_offset(((int)num));
 				break;
 			default:
 				print_usage();
@@ -84,8 +88,10 @@ int main(int ac, char **av)
 
 	root = open_ctree(av[optind], bytenr, 1);
 
-	if (root == NULL)
+	if (!root) {
+		fprintf(stderr, "Open ctree failed\n");
 		return 1;
+	}
 
 	/* make the super writing code think we've read the first super */
 	root->fs_info->super_bytenr = BTRFS_SUPER_INFO_OFFSET;
@@ -95,5 +101,7 @@ int main(int ac, char **av)
 	 * transaction commit.  We just want the super copy we pulled off the
 	 * disk to overwrite all the other copies
 	 */ 
+	printf("using SB copy %d, bytenr %llu\n", num,
+	       (unsigned long long)bytenr);
 	return ret;
 }

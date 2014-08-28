@@ -28,6 +28,7 @@
 #include "volumes.h"
 
 #include "commands.h"
+#include "utils.h"
 
 static const char * const balance_cmd_group_usage[] = {
 	"btrfs [filesystem] balance <command> [options] <path>",
@@ -47,6 +48,10 @@ static int parse_one_profile(const char *profile, u64 *flags)
 		*flags |= BTRFS_BLOCK_GROUP_RAID1;
 	} else if (!strcmp(profile, "raid10")) {
 		*flags |= BTRFS_BLOCK_GROUP_RAID10;
+	} else if (!strcmp(profile, "raid5")) {
+		*flags |= BTRFS_BLOCK_GROUP_RAID5;
+	} else if (!strcmp(profile, "raid6")) {
+		*flags |= BTRFS_BLOCK_GROUP_RAID6;
 	} else if (!strcmp(profile, "dup")) {
 		*flags |= BTRFS_BLOCK_GROUP_DUP;
 	} else if (!strcmp(profile, "single")) {
@@ -62,7 +67,7 @@ static int parse_one_profile(const char *profile, u64 *flags)
 static int parse_profiles(char *profiles, u64 *flags)
 {
 	char *this_char;
-	char *save_ptr;
+	char *save_ptr = NULL; /* Satisfy static checkers */
 
 	for (this_char = strtok_r(profiles, "|", &save_ptr);
 	     this_char != NULL;
@@ -131,7 +136,7 @@ static int parse_filters(char *filters, struct btrfs_balance_args *args)
 {
 	char *this_char;
 	char *value;
-	char *save_ptr;
+	char *save_ptr = NULL; /* Satisfy static checkers */
 
 	if (!filters)
 		return 0;
@@ -159,7 +164,7 @@ static int parse_filters(char *filters, struct btrfs_balance_args *args)
 				return 1;
 			}
 			if (parse_u64(value, &args->usage) ||
-			    args->usage < 1 || args->usage > 100) {
+			    args->usage > 100) {
 				fprintf(stderr, "Invalid usage argument: %s\n",
 				       value);
 				return 1;
@@ -289,11 +294,12 @@ static int do_balance(const char *path, struct btrfs_ioctl_balance_args *args,
 	int fd;
 	int ret;
 	int e;
+	DIR *dirstream = NULL;
 
-	fd = open_file_or_dir(path);
+	fd = open_file_or_dir(path, &dirstream);
 	if (fd < 0) {
-		fprintf(stderr, "ERROR: can't access to '%s'\n", path);
-		return 12;
+		fprintf(stderr, "ERROR: can't access '%s'\n", path);
+		return 1;
 	}
 
 	ret = ioctl(fd, BTRFS_IOC_BALANCE_V2, args);
@@ -324,7 +330,7 @@ static int do_balance(const char *path, struct btrfs_ioctl_balance_args *args,
 			if (e != EINPROGRESS)
 				fprintf(stderr, "There may be more info in "
 					"syslog - try dmesg | tail\n");
-			ret = 19;
+			ret = 1;
 		}
 	} else {
 		printf("Done, had to relocate %llu out of %llu chunks\n",
@@ -334,7 +340,7 @@ static int do_balance(const char *path, struct btrfs_ioctl_balance_args *args,
 	}
 
 out:
-	close(fd);
+	close_file_or_dir(fd, dirstream);
 	return ret;
 }
 
@@ -349,7 +355,7 @@ static const char * const cmd_balance_start_usage[] = {
 	"",
 	"-d[filters]    act on data chunks",
 	"-m[filters]    act on metadata chunks",
-	"-s[filetrs]    act on system chunks (only under -f)",
+	"-s[filters]    act on system chunks (only under -f)",
 	"-v             be verbose",
 	"-f             force reducing of metadata integrity",
 	NULL
@@ -376,7 +382,7 @@ static int cmd_balance_start(int argc, char **argv)
 			{ "system", optional_argument, NULL, 's' },
 			{ "force", no_argument, NULL, 'f' },
 			{ "verbose", no_argument, NULL, 'v' },
-			{ 0, 0, 0, 0 }
+			{ NULL, no_argument, NULL, 0 },
 		};
 
 		int opt = getopt_long(argc, argv, "d::s::m::fv", longopts,
@@ -482,26 +488,30 @@ static int cmd_balance_pause(int argc, char **argv)
 	int fd;
 	int ret;
 	int e;
+	DIR *dirstream = NULL;
 
 	if (check_argc_exact(argc, 2))
 		usage(cmd_balance_pause_usage);
 
 	path = argv[1];
 
-	fd = open_file_or_dir(path);
+	fd = open_file_or_dir(path, &dirstream);
 	if (fd < 0) {
-		fprintf(stderr, "ERROR: can't access to '%s'\n", path);
-		return 12;
+		fprintf(stderr, "ERROR: can't access '%s'\n", path);
+		return 1;
 	}
 
 	ret = ioctl(fd, BTRFS_IOC_BALANCE_CTL, BTRFS_BALANCE_CTL_PAUSE);
 	e = errno;
-	close(fd);
+	close_file_or_dir(fd, dirstream);
 
 	if (ret < 0) {
 		fprintf(stderr, "ERROR: balance pause on '%s' failed - %s\n",
 			path, (e == ENOTCONN) ? "Not running" : strerror(e));
-		return 19;
+		if (e == ENOTCONN)
+			return 2;
+		else
+			return 1;
 	}
 
 	return 0;
@@ -519,26 +529,30 @@ static int cmd_balance_cancel(int argc, char **argv)
 	int fd;
 	int ret;
 	int e;
+	DIR *dirstream = NULL;
 
 	if (check_argc_exact(argc, 2))
 		usage(cmd_balance_cancel_usage);
 
 	path = argv[1];
 
-	fd = open_file_or_dir(path);
+	fd = open_file_or_dir(path, &dirstream);
 	if (fd < 0) {
-		fprintf(stderr, "ERROR: can't access to '%s'\n", path);
-		return 12;
+		fprintf(stderr, "ERROR: can't access '%s'\n", path);
+		return 1;
 	}
 
 	ret = ioctl(fd, BTRFS_IOC_BALANCE_CTL, BTRFS_BALANCE_CTL_CANCEL);
 	e = errno;
-	close(fd);
+	close_file_or_dir(fd, dirstream);
 
 	if (ret < 0) {
 		fprintf(stderr, "ERROR: balance cancel on '%s' failed - %s\n",
 			path, (e == ENOTCONN) ? "Not in progress" : strerror(e));
-		return 19;
+		if (e == ENOTCONN)
+			return 2;
+		else
+			return 1;
 	}
 
 	return 0;
@@ -554,6 +568,7 @@ static int cmd_balance_resume(int argc, char **argv)
 {
 	struct btrfs_ioctl_balance_args args;
 	const char *path;
+	DIR *dirstream = NULL;
 	int fd;
 	int ret;
 	int e;
@@ -563,10 +578,10 @@ static int cmd_balance_resume(int argc, char **argv)
 
 	path = argv[1];
 
-	fd = open_file_or_dir(path);
+	fd = open_file_or_dir(path, &dirstream);
 	if (fd < 0) {
-		fprintf(stderr, "ERROR: can't access to '%s'\n", path);
-		return 12;
+		fprintf(stderr, "ERROR: can't access '%s'\n", path);
+		return 1;
 	}
 
 	memset(&args, 0, sizeof(args));
@@ -574,7 +589,7 @@ static int cmd_balance_resume(int argc, char **argv)
 
 	ret = ioctl(fd, BTRFS_IOC_BALANCE_V2, &args);
 	e = errno;
-	close(fd);
+	close_file_or_dir(fd, dirstream);
 
 	if (ret < 0) {
 		if (e == ECANCELED) {
@@ -587,12 +602,15 @@ static int cmd_balance_resume(int argc, char **argv)
 				"failed - %s\n", path,
 				(e == ENOTCONN) ? "Not in progress" :
 						  "Already running");
-			return 19;
+			if (e == ENOTCONN)
+				return 2;
+			else
+				return 1;
 		} else {
 			fprintf(stderr,
 "ERROR: error during balancing '%s' - %s\n"
 "There may be more info in syslog - try dmesg | tail\n", path, strerror(e));
-			return 19;
+			return 1;
 		}
 	} else {
 		printf("Done, had to relocate %llu out of %llu chunks\n",
@@ -611,10 +629,17 @@ static const char * const cmd_balance_status_usage[] = {
 	NULL
 };
 
+/* Checks the status of the balance if any
+ * return codes:
+ *   2 : Error failed to know if there is any pending balance
+ *   1 : Successful to know status of a pending balance
+ *   0 : When there is no pending balance or completed
+ */
 static int cmd_balance_status(int argc, char **argv)
 {
 	struct btrfs_ioctl_balance_args args;
 	const char *path;
+	DIR *dirstream = NULL;
 	int fd;
 	int verbose = 0;
 	int ret;
@@ -625,7 +650,7 @@ static int cmd_balance_status(int argc, char **argv)
 		int longindex;
 		static struct option longopts[] = {
 			{ "verbose", no_argument, NULL, 'v' },
-			{ 0, 0, 0, 0}
+			{ NULL, no_argument, NULL, 0}
 		};
 
 		int opt = getopt_long(argc, argv, "v", longopts, &longindex);
@@ -646,20 +671,24 @@ static int cmd_balance_status(int argc, char **argv)
 
 	path = argv[optind];
 
-	fd = open_file_or_dir(path);
+	fd = open_file_or_dir(path, &dirstream);
 	if (fd < 0) {
-		fprintf(stderr, "ERROR: can't access to '%s'\n", path);
-		return 12;
+		fprintf(stderr, "ERROR: can't access '%s'\n", path);
+		return 2;
 	}
 
 	ret = ioctl(fd, BTRFS_IOC_BALANCE_PROGRESS, &args);
 	e = errno;
-	close(fd);
+	close_file_or_dir(fd, dirstream);
 
 	if (ret < 0) {
+		if (e == ENOTCONN) {
+			printf("No balance found on '%s'\n", path);
+			return 0;
+		}
 		fprintf(stderr, "ERROR: balance status on '%s' failed - %s\n",
-			path, (e == ENOTCONN) ? "Not in progress" : strerror(e));
-		return 19;
+			path, strerror(e));
+		return 2;
 	}
 
 	if (args.state & BTRFS_BALANCE_STATE_RUNNING) {
@@ -683,7 +712,7 @@ static int cmd_balance_status(int argc, char **argv)
 	if (verbose)
 		dump_ioctl_balance_args(&args);
 
-	return 0;
+	return 1;
 }
 
 const struct cmd_group balance_cmd_group = {
@@ -693,7 +722,7 @@ const struct cmd_group balance_cmd_group = {
 		{ "cancel", cmd_balance_cancel, cmd_balance_cancel_usage, NULL, 0 },
 		{ "resume", cmd_balance_resume, cmd_balance_resume_usage, NULL, 0 },
 		{ "status", cmd_balance_status, cmd_balance_status_usage, NULL, 0 },
-		{ 0, 0, 0, 0, 0 }
+		NULL_CMD_STRUCT
 	}
 };
 

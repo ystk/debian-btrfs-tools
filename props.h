@@ -1,6 +1,4 @@
 /*
- * Copyright (C) 2010 Oracle.  All rights reserved.
- *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
  * License v2 as published by the Free Software Foundation.
@@ -16,24 +14,30 @@
  * Boston, MA 021110-1307, USA.
  */
 
-#ifndef __CHECKER__
-#include <sys/ioctl.h>
-#include <sys/mount.h>
-#include "ioctl.h"
-#endif
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <ctype.h>
-#include <unistd.h>
-#include <dirent.h>
-#include <libgen.h>
-#include <getopt.h>
-#include "kerncompat.h"
-#include "ctree.h"
-#include "transaction.h"
-#include "utils.h"
-#include "version.h"
+#ifndef PROPS_H_
+#define PROPS_H_
 
+enum prop_object_type {
+	prop_object_dev		= (1 << 0),
+	prop_object_root	= (1 << 1),
+	prop_object_subvol	= (1 << 2),
+	prop_object_inode	= (1 << 3),
+	__prop_object_max,
+};
+
+typedef int (*prop_handler_t)(enum prop_object_type type,
+			      const char *object,
+			      const char *name,
+			      const char *value);
+
+struct prop_handler {
+	const char *name;
+	const char *desc;
+	int read_only;
+	int types;
+	prop_handler_t handler;
+};
+
+extern const struct prop_handler prop_handlers[];
+
+#endif /* PROPS_H_ */
