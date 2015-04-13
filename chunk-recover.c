@@ -42,8 +42,6 @@
 #include "btrfsck.h"
 #include "commands.h"
 
-#define BTRFS_NUM_MIRRORS			2
-
 struct recover_control {
 	int verbose;
 	int yes;
@@ -71,8 +69,8 @@ struct extent_record {
 	struct cache_extent cache;
 	u64 generation;
 	u8 csum[BTRFS_CSUM_SIZE];
-	struct btrfs_device *devices[BTRFS_NUM_MIRRORS];
-	u64 offsets[BTRFS_NUM_MIRRORS];
+	struct btrfs_device *devices[BTRFS_MAX_MIRRORS];
+	u64 offsets[BTRFS_MAX_MIRRORS];
 	int nmirrors;
 };
 
@@ -128,7 +126,7 @@ again:
 			    memcmp(exist->csum, rec->csum, BTRFS_CSUM_SIZE)) {
 				ret = -EEXIST;
 			} else {
-				BUG_ON(exist->nmirrors >= BTRFS_NUM_MIRRORS);
+				BUG_ON(exist->nmirrors >= BTRFS_MAX_MIRRORS);
 				exist->devices[exist->nmirrors] = device;
 				exist->offsets[exist->nmirrors] = offset;
 				exist->nmirrors++;
@@ -745,8 +743,9 @@ static int scan_one_device(void *dev_scan_struct)
 	struct recover_control *rc = dev_scan->rc;
 	struct btrfs_device *device = dev_scan->dev;
 	int fd = dev_scan->fd;
+	int oldtype;
 
-	ret = pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+	ret = pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &oldtype);
 	if (ret)
 		return 1;
 
@@ -845,7 +844,8 @@ static int scan_devices(struct recover_control *rc)
 		if (fd < 0) {
 			fprintf(stderr, "Failed to open device %s\n",
 				dev->name);
-			return -1;
+			ret = 1;
+			goto out2;
 		}
 		dev_scans[devidx].rc = rc;
 		dev_scans[devidx].dev = dev;
@@ -856,7 +856,7 @@ static int scan_devices(struct recover_control *rc)
 		if (ret) {
 			cancel_from = 0;
 			cancel_to = devidx - 1;
-			goto out;
+			goto out1;
 		}
 		devidx++;
 	}
@@ -868,15 +868,16 @@ static int scan_devices(struct recover_control *rc)
 			ret = 1;
 			cancel_from = i + 1;
 			cancel_to = devnr - 1;
-			break;
+			goto out1;
 		}
 		i++;
 	}
-out:
-	while (cancel_from <= cancel_to) {
+out1:
+	while (ret && (cancel_from <= cancel_to)) {
 		pthread_cancel(t_scans[cancel_from]);
 		cancel_from++;
 	}
+out2:
 	free(dev_scans);
 	free(t_scans);
 	free(t_rets);
@@ -1280,7 +1281,7 @@ open_ctree_with_broken_chunk(struct recover_control *rc)
 
 	disk_super = fs_info->super_copy;
 	ret = btrfs_read_dev_super(fs_info->fs_devices->latest_bdev,
-				   disk_super, fs_info->super_bytenr);
+				   disk_super, fs_info->super_bytenr, 1);
 	if (ret) {
 		fprintf(stderr, "No valid btrfs found\n");
 		goto out_devices;
@@ -1339,14 +1340,14 @@ static int recover_prepare(struct recover_control *rc, char *path)
 		return -1;
 	}
 
-	sb = malloc(sizeof(struct btrfs_super_block));
+	sb = malloc(BTRFS_SUPER_INFO_SIZE);
 	if (!sb) {
 		fprintf(stderr, "allocating memory for sb failed.\n");
 		ret = -ENOMEM;
 		goto fail_close_fd;
 	}
 
-	ret = btrfs_read_dev_super(fd, sb, BTRFS_SUPER_INFO_OFFSET);
+	ret = btrfs_read_dev_super(fd, sb, BTRFS_SUPER_INFO_OFFSET, 1);
 	if (ret) {
 		fprintf(stderr, "read super block error\n");
 		goto fail_free_sb;
@@ -1490,7 +1491,7 @@ static int btrfs_calc_stripe_index(struct chunk_record *chunk, u64 logical)
 		stripe_nr /= nr_data_stripes;
 		index = (index + stripe_nr) % chunk->num_stripes;
 	} else {
-		BUG_ON(1);
+		return -1;
 	}
 	return index;
 }
@@ -1553,6 +1554,7 @@ btrfs_rebuild_ordered_meta_chunk_stripes(struct recover_control *rc,
 again:
 	er = container_of(cache, struct extent_record, cache);
 	index = btrfs_calc_stripe_index(chunk, er->cache.start);
+	BUG_ON(index == -1);
 	if (chunk->stripes[index].devid)
 		goto next;
 	list_for_each_entry_safe(devext, next, &devexts, chunk_list) {
@@ -1771,6 +1773,34 @@ static int insert_stripe(struct list_head *devexts,
 	return 0;
 }
 
+static inline int count_devext_records(struct list_head *record_list)
+{
+	int num_of_records = 0;
+	struct device_extent_record *devext;
+
+	list_for_each_entry(devext, record_list, chunk_list)
+		num_of_records++;
+
+	return num_of_records;
+}
+
+static int fill_chunk_up(struct chunk_record *chunk, struct list_head *devexts,
+			 struct recover_control *rc)
+{
+	int ret = 0;
+	int i;
+
+	for (i = 0; i < chunk->num_stripes; i++) {
+		if (!chunk->stripes[i].devid) {
+			ret = insert_stripe(devexts, rc, chunk, i);
+			if (ret)
+				break;
+		}
+	}
+
+	return ret;
+}
+
 #define EQUAL_STRIPE (1 << 0)
 
 static int rebuild_raid_data_chunk_stripes(struct recover_control *rc,
@@ -1874,8 +1904,6 @@ next_csum:
 		fprintf(stderr, "Fetch csum failed\n");
 		goto fail_out;
 	} else if (ret == 1) {
-		list_for_each_entry(devext, &unordered, chunk_list)
-			num_unordered++;
 		if (!(*flags & EQUAL_STRIPE))
 			*flags |= EQUAL_STRIPE;
 		goto out;
@@ -1903,22 +1931,21 @@ next_csum:
 	}
 
 	if (list_empty(&candidates)) {
-		list_for_each_entry(devext, &unordered, chunk_list)
-			num_unordered++;
+		num_unordered = count_devext_records(&unordered);
 		if (chunk->type_flags & BTRFS_BLOCK_GROUP_RAID6
 					&& num_unordered == 2) {
-			list_splice_init(&unordered, &chunk->dextents);
 			btrfs_release_path(&path);
-			return 0;
-		} else
-			ret = 1;
+			ret = fill_chunk_up(chunk, &unordered, rc);
+			return ret;
+		}
 
-		goto fail_out;
+		goto next_stripe;
 	}
 
 	if (list_is_last(candidates.next, &candidates)) {
 		index = btrfs_calc_stripe_index(chunk,
 			key.offset + csum_offset * blocksize);
+		BUG_ON(index == -1);
 		if (chunk->stripes[index].devid)
 			goto next_stripe;
 		ret = insert_stripe(&candidates, rc, chunk, index);
@@ -1939,8 +1966,7 @@ next_stripe:
 out:
 	ret = 0;
 	list_splice_init(&candidates, &unordered);
-	list_for_each_entry(devext, &unordered, chunk_list)
-		num_unordered++;
+	num_unordered = count_devext_records(&unordered);
 	if (num_unordered == 1) {
 		for (i = 0; i < chunk->num_stripes; i++) {
 			if (!chunk->stripes[i].devid) {
@@ -1956,14 +1982,7 @@ out:
 			& BTRFS_BLOCK_GROUP_RAID5)
 		 || (num_unordered == 3 && chunk->type_flags
 			& BTRFS_BLOCK_GROUP_RAID6)) {
-			for (i = 0; i < chunk->num_stripes; i++) {
-				if (!chunk->stripes[i].devid) {
-					ret = insert_stripe(&unordered, rc,
-							chunk, i);
-					if (ret)
-						break;
-				}
-			}
+			ret = fill_chunk_up(chunk, &unordered, rc);
 		}
 	}
 fail_out:

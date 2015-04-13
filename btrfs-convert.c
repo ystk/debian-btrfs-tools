@@ -1643,7 +1643,7 @@ err:
 }
 
 /*
- * Migrate super block to it's default position and zero 0 ~ 16k
+ * Migrate super block to its default position and zero 0 ~ 16k
  */
 static int migrate_super_block(int fd, u64 old_bytenr, u32 sectorsize)
 {
@@ -2196,8 +2196,8 @@ err:
 	return ret;
 }
 
-static int do_convert(const char *devname, int datacsum, int packing,
-		int noxattr)
+static int do_convert(const char *devname, int datacsum, int packing, int noxattr,
+	       int copylabel, const char *fslabel)
 {
 	int i, ret;
 	int fd = -1;
@@ -2240,7 +2240,7 @@ static int do_convert(const char *devname, int datacsum, int packing,
 		goto fail;
 	}
 	ret = make_btrfs(fd, devname, ext2_fs->super->s_volume_name,
-			 blocks, total_bytes, blocksize, blocksize,
+			 NULL, blocks, total_bytes, blocksize, blocksize,
 			 blocksize, blocksize, 0);
 	if (ret) {
 		fprintf(stderr, "unable to create initial ctree: %s\n",
@@ -2291,6 +2291,17 @@ static int do_convert(const char *devname, int datacsum, int packing,
 		fprintf(stderr, "error during create_ext2_image %d\n", ret);
 		goto fail;
 	}
+	memset(root->fs_info->super_copy->label, 0, BTRFS_LABEL_SIZE);
+	if (copylabel == 1) {
+		strncpy(root->fs_info->super_copy->label,
+				ext2_fs->super->s_volume_name, 16);
+		fprintf(stderr, "copy label '%s'\n",
+				root->fs_info->super_copy->label);
+	} else if (copylabel == -1) {
+		strncpy(root->fs_info->super_copy->label, fslabel, BTRFS_LABEL_SIZE);
+		fprintf(stderr, "set label to '%s'\n", fslabel);
+	}
+
 	printf("cleaning up system chunk.\n");
 	ret = cleanup_sys_chunk(root, ext2_root);
 	if (ret) {
@@ -2376,7 +2387,7 @@ fail:
 	return -1;
 }
 
-static int do_rollback(const char *devname, int force)
+static int do_rollback(const char *devname)
 {
 	int fd = -1;
 	int ret;
@@ -2441,7 +2452,7 @@ static int do_rollback(const char *devname, int force)
 	ext2_root = btrfs_read_fs_root(root->fs_info, &key);
 	if (!ext2_root || IS_ERR(ext2_root)) {
 		fprintf(stderr, "unable to open subvol %llu\n",
-			key.objectid);
+			(unsigned long long)key.objectid);
 		goto fail;
 	}
 
@@ -2685,11 +2696,13 @@ fail:
 
 static void print_usage(void)
 {
-	printf("usage: btrfs-convert [-d] [-i] [-n] [-r] device\n");
-	printf("\t-d disable data checksum\n");
-	printf("\t-i ignore xattrs and ACLs\n");
-	printf("\t-n disable packing of small files\n");
-	printf("\t-r roll back to ext2fs\n");
+	printf("usage: btrfs-convert [-d] [-i] [-n] [-r] [-l label] [-L] device\n");
+	printf("\t-d           disable data checksum\n");
+	printf("\t-i           ignore xattrs and ACLs\n");
+	printf("\t-n           disable packing of small files\n");
+	printf("\t-r           roll back to ext2fs\n");
+	printf("\t-l LABEL     set filesystem label\n");
+	printf("\t-L           use label from converted fs\n");
 }
 
 int main(int argc, char *argv[])
@@ -2699,9 +2712,13 @@ int main(int argc, char *argv[])
 	int noxattr = 0;
 	int datacsum = 1;
 	int rollback = 0;
+	int copylabel = 0;
+	int usage_error = 0;
 	char *file;
+	char *fslabel = NULL;
+
 	while(1) {
-		int c = getopt(argc, argv, "dinr");
+		int c = getopt(argc, argv, "dinrl:L");
 		if (c < 0)
 			break;
 		switch(c) {
@@ -2717,13 +2734,38 @@ int main(int argc, char *argv[])
 			case 'r':
 				rollback = 1;
 				break;
+			case 'l':
+				copylabel = -1;
+				fslabel = strdup(optarg);
+				if (strlen(fslabel) > BTRFS_LABEL_SIZE) {
+					fprintf(stderr,
+						"warning: label too long, trimmed to %d bytes\n",
+						BTRFS_LABEL_SIZE);
+					fslabel[BTRFS_LABEL_SIZE] = 0;
+				}
+				break;
+			case 'L':
+				copylabel = 1;
+				break;
 			default:
 				print_usage();
 				return 1;
 		}
 	}
 	argc = argc - optind;
-	if (argc != 1) {
+	set_argv0(argv);
+	if (check_argc_exact(argc, 1)) {
+		print_usage();
+		return 1;
+	}
+
+	if (rollback && (!datacsum || noxattr || !packing)) {
+		fprintf(stderr,
+			"Usage error: -d, -i, -n options do not apply to rollback\n");
+		usage_error++;
+	}
+
+	if (usage_error) {
 		print_usage();
 		return 1;
 	}
@@ -2740,9 +2782,9 @@ int main(int argc, char *argv[])
 	}
 
 	if (rollback) {
-		ret = do_rollback(file, 0);
+		ret = do_rollback(file);
 	} else {
-		ret = do_convert(file, datacsum, packing, noxattr);
+		ret = do_convert(file, datacsum, packing, noxattr, copylabel, fslabel);
 	}
 	if (ret)
 		return 1;

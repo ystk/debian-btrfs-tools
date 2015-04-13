@@ -66,9 +66,10 @@ int main(int ac, char **av)
 				print_usage();
 		}
 	}
+	set_argv0(av);
 	ac = ac - optind;
 
-	if (ac != 1)
+	if (check_argc_exact(ac, 1))
 		print_usage();
 
 	if (bytenr == 0) {
@@ -100,8 +101,8 @@ int main(int ac, char **av)
 	/* we don't close the ctree or anything, because we don't want a real
 	 * transaction commit.  We just want the super copy we pulled off the
 	 * disk to overwrite all the other copies
-	 */ 
-	printf("using SB copy %d, bytenr %llu\n", num,
+	 */
+	printf("using SB copy %llu, bytenr %llu\n", (unsigned long long)num,
 	       (unsigned long long)bytenr);
 	return ret;
 }

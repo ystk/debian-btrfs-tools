@@ -119,8 +119,9 @@ static int prop_compression(enum prop_object_type type,
 	DIR *dirstream = NULL;
 	char *buf = NULL;
 	char *xattr_name = NULL;
+	int open_flags = value ? O_RDWR : O_RDONLY;
 
-	fd = open_file_or_dir(object, &dirstream);
+	fd = open_file_or_dir3(object, &dirstream, open_flags);
 	if (fd == -1) {
 		ret = -errno;
 		fprintf(stderr, "ERROR: open %s failed. %s\n",
@@ -128,13 +129,14 @@ static int prop_compression(enum prop_object_type type,
 		goto out;
 	}
 
-	xattr_name = malloc(XATTR_BTRFS_PREFIX_LEN + strlen(name));
+	xattr_name = malloc(XATTR_BTRFS_PREFIX_LEN + strlen(name) + 1);
 	if (!xattr_name) {
 		ret = -ENOMEM;
 		goto out;
 	}
 	memcpy(xattr_name, XATTR_BTRFS_PREFIX, XATTR_BTRFS_PREFIX_LEN);
 	memcpy(xattr_name + XATTR_BTRFS_PREFIX_LEN, name, strlen(name));
+	xattr_name[XATTR_BTRFS_PREFIX_LEN + strlen(name)] = '\0';
 
 	if (value)
 		sret = fsetxattr(fd, xattr_name, value, strlen(value), 0);
@@ -142,10 +144,12 @@ static int prop_compression(enum prop_object_type type,
 		sret = fgetxattr(fd, xattr_name, NULL, 0);
 	if (sret < 0) {
 		ret = -errno;
-		if (ret != -ENODATA)
+		if (ret != -ENOATTR)
 			fprintf(stderr,
 				"ERROR: failed to %s compression for %s. %s\n",
 				value ? "set" : "get", object, strerror(-ret));
+		else
+			ret = 0;
 		goto out;
 	}
 	if (!value) {

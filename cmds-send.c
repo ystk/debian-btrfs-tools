@@ -129,7 +129,10 @@ static int find_good_parent(struct btrfs_send *s, u64 root_id, u64 *found)
 		parent2 = subvol_uuid_search(&s->sus, s->clone_sources[i], NULL,
 				0, NULL, subvol_search_by_root_id);
 
-		assert(parent2);
+		if (!parent2) {
+			ret = -ENOENT;
+			goto out;
+		}
 		tmp = parent2->ctransid - parent->ctransid;
 		if (tmp < 0)
 			tmp *= -1;
@@ -240,7 +243,6 @@ static int do_send(struct btrfs_send *send, u64 parent_root_id,
 {
 	int ret;
 	pthread_t t_read;
-	pthread_attr_t t_attr;
 	struct btrfs_ioctl_send_args io_send;
 	void *t_err = NULL;
 	int subvol_fd = -1;
@@ -254,8 +256,6 @@ static int do_send(struct btrfs_send *send, u64 parent_root_id,
 		goto out;
 	}
 
-	ret = pthread_attr_init(&t_attr);
-
 	ret = pipe(pipefd);
 	if (ret < 0) {
 		ret = -errno;
@@ -268,7 +268,7 @@ static int do_send(struct btrfs_send *send, u64 parent_root_id,
 	send->send_fd = pipefd[0];
 
 	if (!ret)
-		ret = pthread_create(&t_read, &t_attr, dump_thread,
+		ret = pthread_create(&t_read, NULL, dump_thread,
 					send);
 	if (ret) {
 		ret = -ret;
@@ -317,8 +317,6 @@ static int do_send(struct btrfs_send *send, u64 parent_root_id,
 		goto out;
 	}
 
-	pthread_attr_destroy(&t_attr);
-
 	ret = 0;
 
 out:
@@ -351,9 +349,17 @@ static int init_root_path(struct btrfs_send *s, const char *subvol)
 
 	ret = find_mount_root(subvol, &s->root_path);
 	if (ret < 0) {
+		fprintf(stderr,
+			"ERROR: failed to determine mount point for %s: %s\n",
+			subvol, strerror(-ret));
 		ret = -EINVAL;
-		fprintf(stderr, "ERROR: failed to determine mount point "
-				"for %s\n", subvol);
+		goto out;
+	}
+	if (ret > 0) {
+		fprintf(stderr,
+			"ERROR: %s doesn't belong to btrfs mount point\n",
+			subvol);
+		ret = -EINVAL;
 		goto out;
 	}
 
@@ -524,7 +530,7 @@ int cmd_send(int argc, char **argv)
 		}
 	}
 
-	if (optind == argc)
+	if (check_argc_min(argc - optind, 1))
 		usage(cmd_send_usage);
 
 	if (outname != NULL) {
@@ -586,6 +592,13 @@ int cmd_send(int argc, char **argv)
 			fprintf(stderr, "ERROR: find_mount_root failed on %s: "
 					"%s\n", subvol,
 				strerror(-ret));
+			goto out;
+		}
+		if (ret > 0) {
+			fprintf(stderr,
+			"ERROR: %s doesn't belong to btrfs mount point\n",
+				subvol);
+			ret = -EINVAL;
 			goto out;
 		}
 		if (strcmp(send.root_path, mount_root) != 0) {

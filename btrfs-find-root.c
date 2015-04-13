@@ -94,7 +94,7 @@ static struct btrfs_root *open_ctree_broken(int fd, const char *device)
 
 	disk_super = fs_info->super_copy;
 	ret = btrfs_read_dev_super(fs_devices->latest_bdev,
-				   disk_super, fs_info->super_bytenr);
+				   disk_super, fs_info->super_bytenr, 1);
 	if (ret) {
 		printk("No valid btrfs found\n");
 		goto out_devices;
@@ -287,7 +287,6 @@ int main(int argc, char **argv)
 
 	while ((opt = getopt(argc, argv, "l:o:g:")) != -1) {
 		switch(opt) {
-			errno = 0;
 			case 'o':
 				search_objectid = arg_strtou64(optarg);
 				break;
@@ -303,7 +302,9 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (optind >= argc) {
+	set_argv0(argv);
+	argc = argc - optind;
+	if (check_argc_min(argc, 1)) {
 		usage();
 		exit(1);
 	}

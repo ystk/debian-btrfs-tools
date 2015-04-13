@@ -25,6 +25,7 @@
 #include "commands.h"
 #include "props.h"
 #include "ctree.h"
+#include "utils.h"
 
 static const char * const property_cmd_group_usage[] = {
 	"btrfs property get/set/list [-t <type>] <object> [<name>] [value]",
@@ -275,10 +276,6 @@ static int setget_prop(int types, const char *object,
 		fprintf(stderr, "ERROR: property is unknown\n");
 		ret = 40;
 		goto out;
-	} else if (ret) {
-		fprintf(stderr, "ERROR: parse_prop reported unknown error\n");
-		ret = 42;
-		goto out;
 	}
 
 	types &= prop->types;
@@ -388,7 +385,7 @@ static void parse_args(int argc, char **argv,
 static int cmd_get(int argc, char **argv)
 {
 	int ret;
-	char *object;
+	char *object = NULL;
 	char *name = NULL;
 	int types = 0;
 
@@ -412,9 +409,9 @@ static int cmd_get(int argc, char **argv)
 static int cmd_set(int argc, char **argv)
 {
 	int ret;
-	char *object;
-	char *name;
-	char *value;
+	char *object = NULL;
+	char *name = NULL;
+	char *value = NULL;
 	int types = 0;
 
 	if (check_argc_min(argc, 4) || check_argc_max(argc, 6))
