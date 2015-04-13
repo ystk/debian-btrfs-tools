@@ -326,7 +326,7 @@ static int calc_root_size(struct btrfs_root *tree_root, struct btrfs_key *key,
 	int size_fail = 0;
 
 	root = btrfs_read_fs_root(tree_root->fs_info, key);
-	if (!root) {
+	if (IS_ERR(root)) {
 		fprintf(stderr, "Failed to read root %Lu\n", key->objectid);
 		return 1;
 	}
@@ -452,7 +452,9 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (optind >= argc) {
+	set_argv0(argv);
+	argc = argc - optind;
+	if (check_argc_min(argc, 1)) {
 		usage();
 		exit(1);
 	}

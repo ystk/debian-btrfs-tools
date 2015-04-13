@@ -32,6 +32,7 @@
 #include <ftw.h>
 #include <wait.h>
 #include <assert.h>
+#include <getopt.h>
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -523,19 +524,14 @@ out:
 	return ret;
 }
 
-static int close_inode_for_write(struct btrfs_receive *r)
+static void close_inode_for_write(struct btrfs_receive *r)
 {
-	int ret = 0;
-
 	if(r->write_fd == -1)
-		goto out;
+		return;
 
 	close(r->write_fd);
 	r->write_fd = -1;
 	r->write_path[0] = 0;
-
-out:
-	return ret;
 }
 
 static int process_write(const char *path, const void *data, u64 offset,
@@ -821,7 +817,8 @@ static struct btrfs_send_ops send_ops = {
 	.utimes = process_utimes,
 };
 
-static int do_receive(struct btrfs_receive *r, const char *tomnt, int r_fd)
+static int do_receive(struct btrfs_receive *r, const char *tomnt, int r_fd,
+		      u64 max_errors)
 {
 	int ret;
 	char *dest_dir_full_path;
@@ -845,9 +842,17 @@ static int do_receive(struct btrfs_receive *r, const char *tomnt, int r_fd)
 
 	ret = find_mount_root(dest_dir_full_path, &r->root_path);
 	if (ret < 0) {
+		fprintf(stderr,
+			"ERROR: failed to determine mount point for %s: %s\n",
+			dest_dir_full_path, strerror(-ret));
 		ret = -EINVAL;
-		fprintf(stderr, "ERROR: failed to determine mount point "
-			"for %s\n", dest_dir_full_path);
+		goto out;
+	}
+	if (ret > 0) {
+		fprintf(stderr,
+			"ERROR: %s doesn't belong to btrfs mount point\n",
+			dest_dir_full_path);
+		ret = -EINVAL;
 		goto out;
 	}
 	r->mnt_fd = open(r->root_path, O_RDONLY | O_NOATIME);
@@ -873,15 +878,14 @@ static int do_receive(struct btrfs_receive *r, const char *tomnt, int r_fd)
 
 	while (!end) {
 		ret = btrfs_read_and_process_send_stream(r_fd, &send_ops, r,
-							 r->honor_end_cmd);
+							 r->honor_end_cmd,
+							 max_errors);
 		if (ret < 0)
 			goto out;
 		if (ret)
 			end = 1;
 
-		ret = close_inode_for_write(r);
-		if (ret < 0)
-			goto out;
+		close_inode_for_write(r);
 		ret = finish_subvol(r);
 		if (ret < 0)
 			goto out;
@@ -918,6 +922,11 @@ out:
 	return ret;
 }
 
+static const struct option long_opts[] = {
+	{ "max-errors", 1, NULL, 'E' },
+	{ NULL, 0, NULL, 0 }
+};
+
 int cmd_receive(int argc, char **argv)
 {
 	int c;
@@ -925,7 +934,7 @@ int cmd_receive(int argc, char **argv)
 	char *fromfile = NULL;
 	struct btrfs_receive r;
 	int receive_fd = fileno(stdin);
-
+	u64 max_errors = 1;
 	int ret;
 
 	memset(&r, 0, sizeof(r));
@@ -933,7 +942,7 @@ int cmd_receive(int argc, char **argv)
 	r.write_fd = -1;
 	r.dest_dir_fd = -1;
 
-	while ((c = getopt(argc, argv, "evf:")) != -1) {
+	while ((c = getopt_long(argc, argv, "evf:", long_opts, NULL)) != -1) {
 		switch (c) {
 		case 'v':
 			g_verbose++;
@@ -943,6 +952,9 @@ int cmd_receive(int argc, char **argv)
 			break;
 		case 'e':
 			r.honor_end_cmd = 1;
+			break;
+		case 'E':
+			max_errors = arg_strtou64(optarg);
 			break;
 		case '?':
 		default:
@@ -964,15 +976,15 @@ int cmd_receive(int argc, char **argv)
 		}
 	}
 
-	ret = do_receive(&r, tomnt, receive_fd);
+	ret = do_receive(&r, tomnt, receive_fd, max_errors);
 
 	return !!ret;
 }
 
 const char * const cmd_receive_usage[] = {
-	"btrfs receive [-ve] [-f <infile>] <mount>",
+	"btrfs receive [-ve] [-f <infile>] [--max-errors <N>] <mount>",
 	"Receive subvolumes from stdin.",
-	"Receives one or more subvolumes that were previously ",
+	"Receives one or more subvolumes that were previously",
 	"sent with btrfs send. The received subvolumes are stored",
 	"into <mount>.",
 	"btrfs receive will fail in case a receiving subvolume",
@@ -990,5 +1002,8 @@ const char * const cmd_receive_usage[] = {
 	"                 in the data stream. Without this option,",
 	"                 the receiver terminates only if an error",
 	"                 is recognized or on EOF.",
+	"--max-errors <N> Terminate as soon as N errors happened while",
+	"                 processing commands from the send stream.",
+	"                 Default value is 1. A value of 0 means no limit.",
 	NULL
 };

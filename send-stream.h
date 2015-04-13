@@ -18,6 +18,11 @@
 #ifndef SEND_STREAM_H_
 #define SEND_STREAM_H_
 
+/*
+ * NOTE: this file is public API, any incompatible change has to update
+ * library version
+ */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -58,7 +63,8 @@ struct btrfs_send_ops {
 
 int btrfs_read_and_process_send_stream(int fd,
 				       struct btrfs_send_ops *ops, void *user,
-				       int honor_end_cmd);
+				       int honor_end_cmd,
+				       u64 max_errors);
 
 #ifdef __cplusplus
 }

@@ -8,7 +8,9 @@ Build-Depends: debhelper (>= 9),
                libblkid-dev,
                liblzo2-dev,
                uuid-dev,
-               zlib1g-dev
+               zlib1g-dev,
+               asciidoc,
+               xmlto,
 Standards-Version: 3.9.5
 Homepage: http://btrfs.wiki.kernel.org/
 

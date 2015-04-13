@@ -1,3 +1,36 @@
+btrfs-tools (3.17-1.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Add 0002-Fix-linking-with-libbtrfs.patch from upstream, to properly
+    export all the previously exported API (Closes: #768746)
+  * Add 0003-Make-headers-C++-compatible.patch from upstream, making the
+    new headers C++-compatible.
+
+ -- Nicolas Dandrimont <olasd@debian.org>  Sat, 22 Nov 2014 14:52:06 +0100
+
+btrfs-tools (3.17-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Dimitri John Ledkov <dimitri.j.ledkov@linux.intel.com>  Thu, 23 Oct 2014 22:04:07 +0100
+
+btrfs-tools (3.16.2-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Drop patches (not needed, or upstremed), but unaligned memory access.
+  * Update upstream location in uscan, to pull release by kdave.
+  * Use upstream fsck.btrfs script.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Sat, 11 Oct 2014 16:54:05 +0100
+
+btrfs-tools (3.16-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Add asciidoc & xmlto build dependencies.
+  * Disable test-suites for now, should be run as autopkgtests.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Sun, 21 Sep 2014 02:05:14 +0100
+
 btrfs-tools (3.14.1-1) unstable; urgency=medium
 
   * New upstream release.

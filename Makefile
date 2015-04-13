@@ -5,22 +5,23 @@ CC = gcc
 LN = ln
 AR = ar
 AM_CFLAGS = -Wall -D_FILE_OFFSET_BITS=64 -DBTRFS_FLAT_INCLUDES -fno-strict-aliasing -fPIC
-CFLAGS = -g -O1 -fno-strict-aliasing
+CFLAGS = -g -O1 -fno-strict-aliasing -rdynamic
 objects = ctree.o disk-io.o radix-tree.o extent-tree.o print-tree.o \
 	  root-tree.o dir-item.o file-item.o inode-item.o inode-map.o \
 	  extent-cache.o extent_io.o volumes.o utils.o repair.o \
-	  qgroup.o raid6.o free-space-cache.o list_sort.o props.o
+	  qgroup.o raid6.o free-space-cache.o list_sort.o props.o \
+	  ulist.o qgroup-verify.o backref.o rbtree-utils.o
 cmds_objects = cmds-subvolume.o cmds-filesystem.o cmds-device.o cmds-scrub.o \
 	       cmds-inspect.o cmds-balance.o cmds-send.o cmds-receive.o \
 	       cmds-quota.o cmds-qgroup.o cmds-replace.o cmds-check.o \
 	       cmds-restore.o cmds-rescue.o chunk-recover.o super-recover.o \
 	       cmds-property.o
 libbtrfs_objects = send-stream.o send-utils.o rbtree.o btrfs-list.o crc32c.o \
-		   uuid-tree.o
+		   uuid-tree.o utils-lib.o
 libbtrfs_headers = send-stream.h send-utils.h send.h rbtree.h btrfs-list.h \
 	       crc32c.h list.h kerncompat.h radix-tree.h extent-cache.h \
-	       extent_io.h ioctl.h ctree.h btrfsck.h
-TESTS = fsck-tests.sh
+	       extent_io.h ioctl.h ctree.h btrfsck.h version.h
+TESTS = fsck-tests.sh convert-tests.sh
 
 INSTALL = install
 prefix ?= /usr/local
@@ -49,16 +50,27 @@ progs = mkfs.btrfs btrfs-debug-tree btrfsck \
 	btrfs btrfs-map-logical btrfs-image btrfs-zero-log btrfs-convert \
 	btrfs-find-root btrfstune btrfs-show-super
 
+progs_static = $(foreach p,$(progs),$(p).static)
+
 # external libs required by various binaries; for btrfs-foo,
 # specify btrfs_foo_libs = <list of libs>; see $($(subst...)) rules below
 btrfs_convert_libs = -lext2fs -lcom_err
 btrfs_image_libs = -lpthread
-btrfs_fragment_libs = -lgd -lpng -ljpeg -lfreetype
+btrfs_fragments_libs = -lgd -lpng -ljpeg -lfreetype
 
-SUBDIRS = man
+SUBDIRS =
 BUILDDIRS = $(patsubst %,build-%,$(SUBDIRS))
 INSTALLDIRS = $(patsubst %,install-%,$(SUBDIRS))
 CLEANDIRS = $(patsubst %,clean-%,$(SUBDIRS))
+
+ifeq ($(DISABLE_BACKTRACE),1)
+AM_CFLAGS += -DBTRFS_DISABLE_BACKTRACE
+endif
+
+ifneq ($(DISABLE_DOCUMENTATION),1)
+BUILDDIRS += build-Documentation
+INSTALLDIRS += install-Documentation
+endif
 
 .PHONY: $(SUBDIRS)
 .PHONY: $(BUILDDIRS)
@@ -119,7 +131,7 @@ endif
 	@echo "    [CC]     $@"
 	$(Q)$(CC) $(AM_CFLAGS) $(STATIC_CFLAGS) -c $< -o $@
 
-all: $(progs) manpages $(BUILDDIRS)
+all: $(progs) $(BUILDDIRS)
 $(SUBDIRS): $(BUILDDIRS)
 $(BUILDDIRS):
 	@echo "Making all in $(patsubst build-%,%,$@)"
@@ -135,7 +147,7 @@ test:
 # NOTE: For static compiles, you need to have all the required libs
 # 	static equivalent available
 #
-static: btrfs.static mkfs.btrfs.static btrfs-find-root.static
+static: $(progs_static)
 
 version.h:
 	@echo "    [SH]     $@"
@@ -168,8 +180,8 @@ $(lib_links):
 btrfs-%.static: $(static_objects) btrfs-%.static.o $(static_libbtrfs_objects)
 	@echo "    [LD]     $@"
 	$(Q)$(CC) $(STATIC_CFLAGS) -o $@ $@.o $(static_objects) \
-		$(static_libbtrfs_objects) $(STATIC_LDFLAGS) $(STATIC_LIBS) \
-		$($(subst -,_,$(subst .static,,$@)-libs))
+		$(static_libbtrfs_objects) $(STATIC_LDFLAGS) \
+		$($(subst -,_,$(subst .static,,$@)-libs)) $(STATIC_LIBS)
 
 btrfs-%: $(objects) $(libs) btrfs-%.o
 	@echo "    [LD]     $@"
@@ -190,6 +202,10 @@ btrfsck: btrfs
 	@echo "    [LN]     $@"
 	$(Q)$(LN) -f btrfs btrfsck
 
+btrfsck.static: btrfs.static
+	@echo "    [LN]     $@"
+	$(Q)$(LN) -f $^ $@
+
 mkfs.btrfs: $(objects) $(libs) mkfs.o
 	@echo "    [LD]     $@"
 	$(Q)$(CC) $(CFLAGS) -o mkfs.btrfs $(objects) mkfs.o $(LDFLAGS) $(LIBS)
@@ -202,6 +218,11 @@ mkfs.btrfs.static: $(static_objects) mkfs.static.o $(static_libbtrfs_objects)
 btrfstune: $(objects) $(libs) btrfstune.o
 	@echo "    [LD]     $@"
 	$(Q)$(CC) $(CFLAGS) -o btrfstune $(objects) btrfstune.o $(LDFLAGS) $(LIBS)
+
+btrfstune.static: $(static_objects) btrfstune.static.o $(static_libbtrfs_objects)
+	@echo "    [LD]     $@"
+	$(Q)$(CC) $(STATIC_CFLAGS) -o $@ btrfstune.static.o $(static_objects) \
+		$(static_libbtrfs_objects) $(STATIC_LDFLAGS) $(STATIC_LIBS)
 
 dir-test: $(objects) $(libs) dir-test.o
 	@echo "    [LD]     $@"
@@ -220,7 +241,9 @@ send-test: $(objects) $(libs) send-test.o
 	$(Q)$(CC) $(CFLAGS) -o send-test $(objects) send-test.o $(LDFLAGS) $(LIBS) -lpthread
 
 manpages:
-	$(Q)$(MAKE) $(MAKEOPTS) -C man
+	$(Q)$(MAKE) $(MAKEOPTS) -C Documentation
+
+clean-all: clean-doc clean
 
 clean: $(CLEANDIRS)
 	@echo "Cleaning"
@@ -229,6 +252,10 @@ clean: $(CLEANDIRS)
 	      btrfs.static mkfs.btrfs.static btrfs-calc-size \
 	      version.h $(check_defs) \
 	      $(libs) $(lib_links)
+
+clean-doc:
+	@echo "Cleaning Documentation"
+	$(Q)$(MAKE) $(MAKEOPTS) -C Documentation clean
 
 $(CLEANDIRS):
 	@echo "Cleaning $(patsubst clean-%,%,$@)"
@@ -246,9 +273,21 @@ install: $(libs) $(progs) $(INSTALLDIRS)
 	$(INSTALL) -m755 -d $(DESTDIR)$(incdir)
 	$(INSTALL) -m644 $(headers) $(DESTDIR)$(incdir)
 
+install-static: $(progs_static) $(INSTALLDIRS)
+	for p in $(progs_static) ; do \
+		$(INSTALL) -D -m755 $$p $(DESTDIR)$(bindir)/`basename $$p .static` ; \
+	done
+
 $(INSTALLDIRS):
 	@echo "Making install in $(patsubst install-%,%,$@)"
 	$(Q)$(MAKE) $(MAKEOPTS) -C $(patsubst install-%,%,$@) install
+
+uninstall:
+	$(Q)$(MAKE) $(MAKEOPTS) -C Documentation uninstall
+	cd $(DESTDIR)$(incdir); rm -f $(headers)
+	rmdir -p --ignore-fail-on-non-empty $(DESTDIR)$(incdir)
+	cd $(DESTDIR)$(libdir); rm -f $(lib_links) $(libs)
+	cd $(DESTDIR)$(bindir); rm -f btrfsck fsck.btrfs $(progs)
 
 ifneq ($(MAKECMDGOALS),clean)
 -include $(objects:.o=.o.d) $(cmd-objects:.o=.o.d) $(subst .btrfs,, $(filter-out btrfsck.o.d, $(progs:=.o.d)))

@@ -210,7 +210,7 @@ static int create_one_raid_group(struct btrfs_trans_handle *trans,
 static int create_raid_groups(struct btrfs_trans_handle *trans,
 			      struct btrfs_root *root, u64 data_profile,
 			      int data_profile_opt, u64 metadata_profile,
-			      int metadata_profile_opt, int mixed, int ssd)
+			      int mixed)
 {
 	u64 num_devices = btrfs_super_num_devices(root->fs_info->super_copy);
 	int ret;
@@ -288,6 +288,7 @@ static void print_usage(void)
 	fprintf(stderr, "\t -r --rootdir the source directory\n");
 	fprintf(stderr, "\t -K --nodiscard do not perform whole device TRIM\n");
 	fprintf(stderr, "\t -O --features comma separated list of filesystem features\n");
+	fprintf(stderr, "\t -U --uuid specify the filesystem UUID\n");
 	fprintf(stderr, "\t -V --version print the mkfs.btrfs version and exit\n");
 	fprintf(stderr, "%s\n", BTRFS_BUILD_VERSION);
 	exit(1);
@@ -350,7 +351,8 @@ static struct option long_options[] = {
 	{ "version", 0, NULL, 'V' },
 	{ "rootdir", 1, NULL, 'r' },
 	{ "nodiscard", 0, NULL, 'K' },
-	{ "features", 0, NULL, 'O' },
+	{ "features", 1, NULL, 'O' },
+	{ "uuid", required_argument, NULL, 'U' },
 	{ NULL, 0, NULL, 0}
 };
 
@@ -1273,11 +1275,12 @@ int main(int ac, char **av)
 	int dev_cnt = 0;
 	int saved_optind;
 	char estr[100];
+	char *fs_uuid = NULL;
 	u64 features = DEFAULT_MKFS_FEATURES;
 
 	while(1) {
 		int c;
-		c = getopt_long(ac, av, "A:b:fl:n:s:m:d:L:O:r:VMK",
+		c = getopt_long(ac, av, "A:b:fl:n:s:m:d:L:O:r:U:VMK",
 				long_options, &option_index);
 		if (c < 0)
 			break;
@@ -1332,9 +1335,9 @@ int main(int ac, char **av)
 				break;
 			case 'b':
 				block_count = parse_size(optarg);
-				if (block_count <= 1024*1024*1024) {
-					printf("SMALL VOLUME: forcing mixed "
-					       "metadata/data groups\n");
+				if (block_count <= BTRFS_MKFS_SMALL_VOLUME_SIZE) {
+					fprintf(stdout,
+				"SMALL VOLUME: forcing mixed metadata/data groups\n");
 					mixed = 1;
 				}
 				zero_end = 0;
@@ -1345,6 +1348,9 @@ int main(int ac, char **av)
 			case 'r':
 				source_dir = optarg;
 				source_dir_set = 1;
+				break;
+			case 'U':
+				fs_uuid = optarg;
 				break;
 			case 'K':
 				discard = 0;
@@ -1368,6 +1374,20 @@ int main(int ac, char **av)
 			"The -r option is limited to a single device\n");
 		exit(1);
 	}
+
+	if (fs_uuid) {
+		uuid_t dummy_uuid;
+
+		if (uuid_parse(fs_uuid, dummy_uuid) != 0) {
+			fprintf(stderr, "could not parse UUID: %s\n", fs_uuid);
+			exit(1);
+		}
+		if (!test_uuid_unique(fs_uuid)) {
+			fprintf(stderr, "non-unique UUID: %s\n", fs_uuid);
+			exit(1);
+		}
+	}
+	
 	while (dev_cnt-- > 0) {
 		file = av[optind++];
 		if (is_block_device(file))
@@ -1431,6 +1451,36 @@ int main(int ac, char **av)
 		}
 	}
 
+	/* Check device/block_count after the leafsize is determined */
+	if (block_count && block_count < btrfs_min_dev_size(leafsize)) {
+		fprintf(stderr,
+			"Size '%llu' is too small to make a usable filesystem\n",
+			block_count);
+		fprintf(stderr,
+			"Minimum size for btrfs filesystem is %llu\n",
+			btrfs_min_dev_size(leafsize));
+		exit(1);
+	}
+	for (i = saved_optind; i < saved_optind + dev_cnt; i++) {
+		char *path;
+
+		path = av[i];
+		ret = test_minimum_size(path, leafsize);
+		if (ret < 0) {
+			fprintf(stderr, "Failed to check size for '%s': %s\n",
+				path, strerror(-ret));
+			exit (1);
+		}
+		if (ret > 0) {
+			fprintf(stderr,
+				"'%s' is too small to make a usable filesystem\n",
+				path);
+			fprintf(stderr,
+				"Minimum size for each btrfs device is %llu.\n",
+				btrfs_min_dev_size(leafsize));
+			exit(1);
+		}
+	}
 	ret = test_num_disk_vs_raid(metadata_profile, data_profile,
 			dev_cnt, mixed, estr);
 	if (ret) {
@@ -1439,8 +1489,8 @@ int main(int ac, char **av)
 	}
 
 	/* if we are here that means all devs are good to btrfsify */
-	printf("\nWARNING! - %s IS EXPERIMENTAL\n", BTRFS_BUILD_VERSION);
-	printf("WARNING! - see http://btrfs.wiki.kernel.org before using\n\n");
+	printf("%s\n", BTRFS_BUILD_VERSION);
+	printf("See http://btrfs.wiki.kernel.org for more information.\n\n");
 
 	dev_cnt--;
 
@@ -1514,7 +1564,7 @@ int main(int ac, char **av)
 
 	process_fs_features(features);
 
-	ret = make_btrfs(fd, file, label, blocks, dev_block_count,
+	ret = make_btrfs(fd, file, label, fs_uuid, blocks, dev_block_count,
 			 nodesize, leafsize,
 			 sectorsize, stripesize, features);
 	if (ret) {
@@ -1538,12 +1588,11 @@ int main(int ac, char **av)
 
 	trans = btrfs_start_transaction(root, 1);
 
+	btrfs_register_one_device(file);
+
 	if (dev_cnt == 0)
 		goto raid_groups;
 
-	btrfs_register_one_device(file);
-
-	zero_end = 1;
 	while (dev_cnt-- > 0) {
 		int old_mixed = mixed;
 
@@ -1586,7 +1635,7 @@ raid_groups:
 	if (!source_dir_set) {
 		ret = create_raid_groups(trans, root, data_profile,
 				 data_profile_opt, metadata_profile,
-				 metadata_profile_opt, mixed, ssd);
+				 mixed);
 		BUG_ON(ret);
 	}
 
@@ -1598,7 +1647,6 @@ raid_groups:
 	    label, first_file, nodesize, leafsize, sectorsize,
 	    pretty_size(btrfs_super_total_bytes(root->fs_info->super_copy)));
 
-	printf("%s\n", BTRFS_BUILD_VERSION);
 	btrfs_commit_transaction(trans, root);
 
 	if (source_dir_set) {
